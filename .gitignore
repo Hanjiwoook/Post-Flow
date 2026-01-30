@@ -1,0 +1,31 @@
+# Python / Backend
+backend/venv/
+backend/.env
+backend/__pycache__/
+*.py[cod]
+
+# Flutter / Frontend
+frontend/build/
+frontend/.dart_tool/
+frontend/.packages
+frontend/.pub-deps
+frontend/pubspec.lock
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.metadata
+frontend/android/.gradle
+frontend/android/local.properties
+frontend/ios/.generated/
+frontend/ios/Flutter/Generated.xcconfig
+frontend/ios/Flutter/flutter_export_environment.sh
+frontend/ios/Flutter/app.flx
+frontend/ios/Flutter/App.framework
+frontend/ios/Flutter/Flutter.framework
+frontend/ios/Runner/GeneratedPluginRegistrant.*
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.iml

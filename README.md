@@ -39,8 +39,14 @@
 ```bash
 post-flow/
 ├── backend/            # Python FastAPI 서버
+│   ├── app/            # 메인 애플리케이션 코드
+│   │   ├── api/        # API 엔드포인트 (v1)
+│   │   ├── core/       # 설정 및 공통 로직
+│   │   ├── db/         # 데이터베이스 모델 및 세션
+│   │   ├── schemas/    # Pydantic 데이터 모델
+│   │   └── services/   # 비즈니스 로직 (AI, 이미지 처리)
 │   ├── .env            # 환경변수 (API Key - 직접 생성 필요)
-│   └── main.py         # 서버 메인 코드
+│   └── requirements.txt
 └── frontend/           # Flutter 앱
     ├── lib/
     │   └── main.dart   # 앱 메인 화면 코드
@@ -68,15 +74,13 @@ source venv/bin/activate
 
 # 3. 라이브러리 설치
 pip install -r requirements.txt
-# (또는) pip install fastapi "uvicorn[standard]" google-generativeai pillow python-dotenv
 
 # 4. ⚠️ 중요: 환경 변수 설정 (.env 파일 생성)
 # backend 폴더 안에 .env 파일을 직접 만들고 아래 내용을 입력하세요.
-# (보안을 위해 .env 파일은 Git에 포함되지 않습니다.)
 GEMINI_API_KEY=당신의_구글_API_키_입력
 
-# 5. 서버 실행
-uvicorn main:app --reload
+# 5. 서버 실행 (변경된 명령어)
+uvicorn app.main:app --reload
 ```
 
 - **서버 주소:** `http://127.0.0.1:8000`

@@ -1,0 +1,74 @@
+{
+  "사진": {
+    "selector": "button[aria-label='사진']",
+    "type": "button"
+  },
+  "스티커": {
+    "selector": "button[aria-label='스티커']",
+    "type": "button"
+  },
+  "인용구": {
+    "selector": "button[aria-label='인용구']",
+    "type": "button"
+  },
+  "구분선": {
+    "selector": "button[aria-label='구분선']",
+    "type": "button"
+  },
+  "장소": {
+    "selector": "button[aria-label='장소']",
+    "type": "button"
+  },
+  "링크": {
+    "selector": "button[aria-label='링크']",
+    "type": "button"
+  },
+  "글감": {
+    "selector": "button[aria-label='글감']",
+    "type": "button"
+  },
+  "내돈내산": {
+    "selector": "button[aria-label*='내돈내산']",
+    "type": "button"
+  },
+  "글자크기": {
+    "selector": "button[aria-label*='글자 크기']",
+    "type": "button"
+  },
+  "굵게": {
+    "selector": "button[aria-label='굵게']",
+    "type": "button"
+  },
+  "밑줄": {
+    "selector": "button[aria-label='밑줄']",
+    "type": "button"
+  },
+  "취소선": {
+    "selector": "button[aria-label='취소선']",
+    "type": "button"
+  },
+  "글자색": {
+    "selector": "button[aria-label='글자색']",
+    "type": "button"
+  },
+  "배경색": {
+    "selector": "button[aria-label='배경색']",
+    "type": "button"
+  },
+  "정렬": {
+    "selector": "button[aria-label='정렬']",
+    "type": "button"
+  },
+  "가운데정렬": {
+    "selector": "button[aria-label='가운데 정렬']",
+    "type": "button"
+  },
+  "왼쪽정렬": {
+    "selector": "button[aria-label='왼쪽 정렬']",
+    "type": "button"
+  },
+  "오른쪽정렬": {
+    "selector": "button[aria-label='오른쪽 정렬']",
+    "type": "button"
+  }
+}

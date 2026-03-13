@@ -1,0 +1,117 @@
+{
+  "visual_facts": [
+    {
+      "image_index": 1,
+      "category": "EXTERIOR",
+      "description": "유카이도 매장이 있는 건물 외관과 'QUERENCIA' 간판이 보인다."
+    },
+    {
+      "image_index": 2,
+      "category": "EXTERIOR",
+      "description": "'YUKAIDO SINCE 2011'이라고 적힌 나무 입간판이 보도에 세워져 있다."
+    },
+    {
+      "image_index": 3,
+      "category": "INTERIOR",
+      "description": "매장 내부의 4인용 테이블과 의자, 창문 옆 선반에 책들이 놓여 있다."
+    },
+    {
+      "image_index": 4,
+      "category": "RECEIPT",
+      "description": "특선차슈멘과 장점맥주를 포함한 20,500원 결제 영수증. 매장 주소와 전화번호가 기재되어 있다."
+    },
+    {
+      "image_index": 5,
+      "category": "INTERIOR",
+      "description": "카운터에 젓가락, 티슈, 후추 그라인더, 절임류가 담긴 유리병 등 식기류와 양념통이 정돈되어 있다."
+    },
+    {
+      "image_index": 6,
+      "category": "INTERIOR",
+      "description": "개방형 주방과 바 형태의 좌석이 보이는 매장 내부 전경. 직원들이 주방에서 조리하고 있다."
+    },
+    {
+      "image_index": 7,
+      "category": "INTERIOR",
+      "description": "주방에서 조리 중인 직원들과 바 좌석에 놓인 양념통, 물통 등이 보인다."
+    },
+    {
+      "image_index": 8,
+      "category": "MENU",
+      "description": "라멘과 사이드 메뉴가 표시된 디지털 메뉴판. 특선차슈멘, 소유라멘, 돈코츠라멘, 매운라멘, 나가사키짬뽕, 마제소바, 오코노미야키, 교자, 치킨가라아게, 왕새우튀김 등이 보인다."
+    },
+    {
+      "image_index": 9,
+      "category": "MENU",
+      "description": "다양한 라멘과 사이드 메뉴의 가격이 적힌 메뉴판. 특선차슈멘 19,000원, 돈코츠라멘 11,000원, 교자 4,500원 등이 명시되어 있다."
+    },
+    {
+      "image_index": 10,
+      "category": "EXTERIOR",
+      "description": "유카이도 매장 입구와 간판, 그리고 입구 앞에 놓인 나무 벤치들이 보인다."
+    },
+    {
+      "image_index": 11,
+      "category": "EXTERIOR",
+      "description": "매주 수요일 휴무, 영업시간은 오전 11시부터 오후 9시까지이며 마지막 주문은 마감 30분 전까지라는 안내문이 문에 붙어 있다."
+    },
+    {
+      "image_index": 12,
+      "category": "FOOD_ITEM:특선차슈멘",
+      "description": "얇게 썬 차슈가 그릇 가장자리에 둘러져 있고 반숙 계란, 숙주 등이 올라간 라멘과 작은 맥주 한 잔이 함께 놓여 있다."
+    },
+    {
+      "image_index": 13,
+      "category": "FOOD_ITEM:장점맥주",
+      "description": "거품이 있는 맥주 한 잔과 노란색 절임류가 담긴 유리병이 보인다."
+    },
+    {
+      "image_index": 14,
+      "category": "FOOD_ITEM:특선차슈멘",
+      "description": "젓가락으로 라멘 면과 차슈를 집어 올리는 모습."
+    },
+    {
+      "image_index": 15,
+      "category": "FOOD_ITEM:특선차슈멘",
+      "description": "라멘에 들어있는 노른자가 반숙된 계란의 클로즈업 사진."
+    },
+    {
+      "image_index": 16,
+      "category": "FOOD_ITEM:특선차슈멘",
+      "description": "젓가락으로 라멘 속 흰색 차슈 한 조각을 집어 올리는 모습."
+    },
+    {
+      "image_index": 17,
+      "category": "FOOD_ITEM:특선차슈멘",
+      "description": "젓가락으로 라멘 속 갈색 차슈 한 조각을 집어 올리는 모습."
+    },
+    {
+      "image_index": 18,
+      "category": "INTERIOR",
+      "description": "젓가락, 종이컵, 후추 그라인더, 절임류가 담긴 유리병 등이 놓인 양념 트레이."
+    },
+    {
+      "image_index": 19,
+      "category": "INTERIOR",
+      "description": "영수증 리뷰 이벤트 참여 방법과 유카이도 이용 안내(루이보스티, 양념, 무김치, 초생강, 돈코츠엔 간마늘, 소유라멘엔 시치미, 마제소바엔 다시마식초)가 적힌 안내문."
+    },
+    {
+      "image_index": 20,
+      "category": "FOOD_ITEM:미소장국, FOOD_ITEM:매콤한 새우/낙지볶음",
+      "description": "미소장국과 매콤하게 양념된 새우 또는 낙지볶음으로 보이는 반찬이 보인다."
+    }
+  ],
+  "place_address": "서울특별시 구로구 연동로112길 9 (궁동) 1층 101호",
+  "place_hours": "매주 수요일 휴무, OPEN 11:00, CLOSE 21:00 (마지막 주문은 마감 30분 전까지)",
+  "place_parking": "건물 내 주차 공간이 있는 것으로 보임",
+  "place_phone": "010-3836-9794",
+  "place_vibe": [
+    "깔끔한",
+    "캐주얼한",
+    "오픈 키친",
+    "바 좌석",
+    "우드톤 인테리어"
+  ],
+  "visitor_insight": "영수증 리뷰 이벤트를 통해 음료, 계란, 토핑 추가 서비스를 제공하며, 다양한 라멘 메뉴와 사이드 메뉴를 즐길 수 있다. 오픈 키친과 바 좌석이 있어 캐주얼하게 식사하기 좋다.",
+  "recent_event": "영수증 리뷰 이벤트를 진행 중이며, 참여 시 테이블당 음료, 계란 추가, 토핑 추가 중 하나를 서비스로 제공한다."
+}

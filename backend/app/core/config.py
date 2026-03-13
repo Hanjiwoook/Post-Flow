@@ -16,6 +16,15 @@ class Settings:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY")
     GEMINI_MODEL_NAME: str = "gemini-2.5-flash"
 
+    # Branding
+    BLOG_NAME: str = os.getenv("BLOG_NAME", "ohuks")
+    BLOG_NICKNAME: str = os.getenv("BLOG_NICKNAME", "욱")
+
+    # Naver Automation
+    NAVER_ID: str = os.getenv("NAVER_ID")
+    NAVER_PW: str = os.getenv("NAVER_PW")
+    NAVER_BLOG_ID: str = os.getenv("NAVER_BLOG_ID")
+
     # Database (SQLite)
     SQLITE_URL: str = f"sqlite:///{os.path.join(BASE_DIR, 'postflow.db')}"
 

@@ -2,6 +2,8 @@
 backend/venv/
 backend/.env
 backend/__pycache__/
+backend/uploads/
+backend/postflow.db
 *.py[cod]
 
 # Flutter / Frontend
@@ -29,3 +31,4 @@ frontend/ios/Runner/GeneratedPluginRegistrant.*
 .vscode/
 *.swp
 *.iml
+.aider*

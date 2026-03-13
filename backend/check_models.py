@@ -2,30 +2,34 @@ import google.generativeai as genai
 import os
 from dotenv import load_dotenv
 
-# 1. 환경변수 로드
-load_dotenv()
+# .env 파일 로드
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
 api_key = os.getenv("GEMINI_API_KEY")
 
 if not api_key:
-    print("❌ API 키가 없습니다. .env 파일을 확인하세요.")
+    print("❌ GEMINI_API_KEY가 .env 파일에 설정되어 있지 않습니다.")
 else:
-    # 2. 구글 서버에 접속
+    print(f"🔑 API Key: {api_key[:10]}********")
     genai.configure(api_key=api_key)
-    
-    print(f"🔑 확인된 API 키: {api_key[:5]}...")
-    print("\n📋 [내 계정에서 사용 가능한 모델 목록]")
-    print("-" * 40)
-    
+
+    print("\n🔍 사용 가능한 Gemini 모델 리스트를 확인 중입니다...\n")
     try:
-        # 3. 사용 가능한 모든 모델을 조회해서 출력
-        available_models = []
-        for m in genai.list_models():
+        model_list = genai.list_models()
+        count = 0
+        for m in model_list:
             if 'generateContent' in m.supported_generation_methods:
-                print(f"✅ 발견됨: {m.name}")
-                available_models.append(m.name)
+                print(f"✅ 모델명: {m.name}")
+                print(f"   - 설명: {m.description}")
+                print(f"   - 지원 버전: {m.supported_generation_methods}")
+                print("-" * 50)
+                count += 1
         
-        if not available_models:
-            print("⚠️ 사용 가능한 모델이 하나도 없습니다. API 키 설정을 확인해야 합니다.")
+        if count == 0:
+            print("⚠️ 'generateContent'를 지원하는 모델을 찾지 못했습니다.")
+        else:
+            print(f"\n✨ 총 {count}개의 생성 모델을 찾았습니다!")
             
     except Exception as e:
-        print(f"❌ 에러 발생: {e}")
+        print(f"❌ 모델 리스트 확인 중 오류 발생: {e}")

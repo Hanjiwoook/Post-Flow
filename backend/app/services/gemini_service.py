@@ -20,24 +20,30 @@ class ImageAnalysis(BaseModel):
 class ImageAnalysisList(BaseModel):
     results: List[ImageAnalysis]
 
-# 매장 정보 요약
+# 매장 정보 요약 (감성 데이터 포함 확장)
 class PlaceSummary(BaseModel):
     place_name: str
     address: str
     phone: str
     business_hours: str
     parking: str
+    # 감성/맥락 데이터
+    visit_purpose: Optional[str] = Field(None, description="방문 목적 (예: 데이트, 혼밥, 회식 등)")
+    special_note: Optional[str] = Field(None, description="사용자의 특별한 한 줄 메모/첫인상")
+    rating: Optional[str] = Field(None, description="사용자의 별점이나 만족도 (1~5점)")
     owner_intro: Optional[str] = None
     visitor_insight: Optional[str] = None
 
-# 블로그 본문 블록
+# 블로그 본문 블록 (실제 ContentBlock 스키마와 동기화)
 class BlogPostBlock(BaseModel):
-    type: str = "quote"
-    value: str = Field(description="반드시 '[섹션명] 내용' 형식")
+    type: str = Field(description="text, quote, divider, image, map 중 하나")
+    value: Optional[str] = Field(None, description="본문 텍스트 또는 인용구 내용")
+    style: Optional[str] = Field(None, description="quote인 경우 'box' 또는 'line', divider인 경우 'line' 등")
+    image_indices: List[int] = Field(default_factory=list, description="type이 image인 경우, 원본 사진 리스트에서의 0-based 인덱스 리스트 (콜라주용)")
 
 # 최종 블로그 포스팅
 class BlogPost(BaseModel):
-    title: str = Field(description="클릭을 유도하는 센스있는 블로그 제목")
+    title: str = Field(description="클릭을 유도하는 센스있고 감성적인 블로그 제목 (이모지 포함 가능)")
     blocks: List[BlogPostBlock]
     tags: List[str]
 
@@ -48,9 +54,11 @@ class GeminiService:
         if not settings.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY is not set")
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        self.signature_greeting = "여러분의 맛집 메이트! 욱스의 욱이, 오늘도 기분 좋게 인사드려요!"
+        # 설정된 블로그 닉네임을 사용하도록 개선
+        nickname = settings.BLOG_NICKNAME or "욱스"
+        self.signature_greeting = f"안녕하세요! 맛집과 일상을 기록하는 '{nickname}'입니다. ✨ 오늘도 직접 발로 뛰어 찾은 리얼 맛집 정보를 전해드릴게요!"
         self.MODEL_ID = "gemini-2.5-flash"
-        print(f"🚀 GeminiService V12 (Ironclad Editor Mode) Initialized")
+        print(f"🚀 GeminiService V12 (Influencer Edition) Initialized")
 
     def _prepare_image_part(self, img: Image.Image) -> types.Part:
         if max(img.size) > 1024:
@@ -69,30 +77,29 @@ class GeminiService:
             
             # 사용자 힌트
             user_hints = initial_facts.get('image_hints', [])
-            hints_str = "\n".join([f"사진 {i+1} 힌트: {h}" for i, h in enumerate(user_hints) if h])
+            hints_str = "\n".join([f"사진 {i} 힌트: {h}" for i, h in enumerate(user_hints) if h])
             
             # 1. 시각 정보 엄격 추출 (순서 강제)
             vision_prompt = f"""
-            내가 {count}장의 사진을 순서대로 줄 거야.
-            너는 반드시 이 사진들의 순서에 맞춰서 정확히 {count}개의 결과를 반환해야 해. 순서를 섞거나 누락하면 절대 안 돼.
+            내가 {count}장의 사진을 순서대로 줄 거야. (0번부터 {count-1}번까지 인덱스 부여)
+            너는 반드시 이 사진들의 순서에 맞춰서 정확히 {count}개의 분석 결과를 반환해야 해.
             
             [사용자 힌트 (최우선 반영)]:
             {hints_str}
             
-            [미션]
-            - 건물의 밖, 간판 -> EXTERIOR
-            - 매장 내부, 테이블 -> INTERIOR
-            - 메뉴판 -> MENU
-            - 음식 -> FOOD_ITEM:메뉴명 (메뉴명은 힌트나 사진을 보고 정확히 적을 것)
-            - 설명은 눈에 보이는 사실만 적고, "일본 현지 느낌", "한적한" 같은 주관적 감상은 배제해.
+            [카테고리 분류 가이드]
+            - EXTERIOR: 매장 외부, 간판
+            - INTERIOR: 내부 인테리어, 분위기
+            - MENU: 메뉴판
+            - FOOD_ITEM:메뉴명: 개별 음식 사진
+            - MAP/RECEIPT: 지도나 영수증
             """
             config_vision = types.GenerateContentConfig(response_mime_type="application/json", response_schema=ImageAnalysisList, temperature=0.0)
             res_vision = self.client.models.generate_content(model=self.MODEL_ID, contents=[vision_prompt, *image_parts], config=config_vision)
             vision_data = res_vision.parsed.results
 
-            # 만약 개수가 안 맞으면 강제 보정 (이미지 꼬임 완벽 방지)
             if len(vision_data) < count:
-                vision_data.extend([ImageAnalysis(category="INTERIOR", description="추가 사진")] * (count - len(vision_data)))
+                vision_data.extend([ImageAnalysis(category="INTERIOR", description="추가 정보 없음")] * (count - len(vision_data)))
             elif len(vision_data) > count:
                 vision_data = vision_data[:count]
 
@@ -101,66 +108,69 @@ class GeminiService:
             print(f"🔍 [2/3] Extracting place data...")
             # 2. 매장 정보 요약
             raw_text = json.dumps(initial_facts, ensure_ascii=False)
-            data_prompt = f"아래 데이터에서 매장 핵심 정보만 뽑아줘. 과거 정보는 무시해.\n{raw_text[:15000]}"
+            data_prompt = f"아래 데이터에서 매장 정보와 감성 정보를 뽑아줘.\n{raw_text[:15000]}"
             config_data = types.GenerateContentConfig(response_mime_type="application/json", response_schema=PlaceSummary, temperature=0.0)
             res_data = self.client.models.generate_content(model=self.MODEL_ID, contents=data_prompt, config=config_data)
             place_data = res_data.parsed
 
-            concise_info = f"{place_data.place_name} / {place_data.address} / {place_data.business_hours} / {place_data.phone} / {place_data.parking}"
-
             await asyncio.sleep(2)
 
-            print(f"✍️ [3/3] Writing full blog post without hallucination...")
-            # 3. 블로그 원샷 집필
-            food_items = sorted(list(set([v.category.split(":")[1] for v in vision_data if v.category.startswith("FOOD_ITEM:")])))
-            has_menu = any(v.category == "MENU" for v in vision_data)
+            print(f"✍️ [3/3] Writing influencer blog post with smart layout...")
+            # 팩트 정리
+            fact_list_str = "\n".join([f"- 사진 {i} ({v.category}): {v.description}" for i, v in enumerate(vision_data)])
             
-            # 작가에게 줄 팩트 정리
-            fact_list_str = "\n".join([f"- 사진 {i+1} ({v.category}): {v.description}" for i, v in enumerate(vision_data)])
-            food_guide = "\n".join([f"   - [음식:{m}]: 사진 팩트 기반 상세 묘사" for m in food_items])
+            purpose = f"#{place_data.visit_purpose}" if place_data.visit_purpose else ""
+            note = f"'{place_data.special_note}'" if place_data.special_note else ""
+            rating_star = "⭐" * int(place_data.rating) if place_data.rating and place_data.rating.isdigit() else ""
+
+            # 지역명 추출 (주소에서 '구' 또는 '동' 단위 추출)
+            location_keyword = place_data.address.split(' ')[1] if len(place_data.address.split(' ')) > 1 else ""
 
             writer_prompt = f"""
-            너는 10만 팔로워 맛집 블로거야. 아래 [제공된 팩트]만 사용해서 완벽한 포스팅을 하나로 완성해줘.
+            너는 대한민국 최고의 맛집 인플루언서이자 전문 에디터야. 아래 가이드에 맞춰 포스팅을 작성해줘.
             
-            [절대 금지 사항 - 할루시네이션 방지]
-            1. "한적한 골목길", "일본 현지 느낌" 등 팩트에 없는 분위기를 지어내지 마.
-            2. 제공된 음식({food_items}) 외에 미소장국, 반찬 등 없는 메뉴는 절대 언급하지 마.
+            [핵심 목표: 네이버 검색 노출(SEO) 최적화 제목 생성]
+            - 제목은 반드시 아래 공식을 따를 것: 
+              `[지역명(동/구 단위)] [주요메뉴] 맛집 [매장명] : [감성적인 한줄평]`
+            - 예시: `한남동 라멘 맛집 유카이도 : 인생 라멘을 만난 우드톤 감성 공간✨`
+            - 지역명 키워드: {location_keyword}
+            - 매장명: {place_data.place_name}
+            
+            [작성 가이드 - 순서 및 태그 엄수]
+            1. **[인사말] 섹션**: 반드시 `[인사말] {self.signature_greeting}`로 시작할 것.
+            2. **사진 우선 배치**: 각 섹션에서 **사진(`image`) 블록을 먼저** 두고, 그 아래에 설명(`text`) 블록을 작성해.
+            3. **콜라주 활용**: 외관(EXTERIOR)이나 내부(INTERIOR) 사진이 여러 장이면 하나의 `image` 블록에 `image_indices` 리스트로 묶어서 내보내.
+            
+            [블로그 템플릿 구조]
+            1. [인사말]: {purpose}와 {note} 반영하여 작성.
+            2. [매장 위치 & 정보]: `quote`(box)로 요약 정보.
+            3. [외관]: 사진들(콜라주) 먼저 -> 설명 텍스트.
+            4. [내부]: 사진들(콜라주) 먼저 -> 설명 텍스트.
+            5. [메뉴판]: 사진 먼저 -> 설명 텍스트.
+            6. [음식:메뉴명]: 사진 먼저 -> 상세 맛 묘사 텍스트.
+            7. [총평 & 마무리]: {rating_star} 반영하여 마무리.
+
+            [작성 규칙]
+            - 모든 텍스트 블록의 시작은 반드시 `[섹션명]`으로 시작. (예: [인사말], [외관], [음식:라멘])
+            - 각 섹션당 풍부한 묘사 필수.
             
             [제공된 팩트]
-            {fact_list_str}
-            - 매장 인사이트: {place_data.visitor_insight}
-
-            [필수 작성 섹션 - 이름 변경 불가]
-            1. [인사말]: 반드시 "{self.signature_greeting}"로 시작. 풍부하게 묘사.
-            2. [매장 위치 & 정보]: 아래 텍스트만 딱 한 줄로 출력.
-               {concise_info}
-            3. [외관]: EXTERIOR 사진 내용만 묘사.
-            4. [내부]: INTERIOR 사진 내용만 묘사.
-            {f"5. [메뉴판]: MENU 사진 내용 묘사." if has_menu else ""}
-            6. 음식 섹션 (메뉴별 개별 작성):
-            {food_guide}
-            7. [총평 & 마무리]: 소감 및 추천 여부.
-
-            각 블록의 value는 반드시 `[섹션명] 내용` 형식이어야 해. 외관과 내부를 복사붙여넣기 하지 말고 각각의 특징을 명확히 써.
+            - 매장명: {place_data.place_name}
+            - 주소: {place_data.address}
+            - 사진 정보: {fact_list_str}
             """
             
-            config_write = types.GenerateContentConfig(response_mime_type="application/json", response_schema=BlogPost, temperature=0.7, max_output_tokens=8192)
+            config_write = types.GenerateContentConfig(response_mime_type="application/json", response_schema=BlogPost, temperature=0.8, max_output_tokens=8192)
             res_write = self.client.models.generate_content(model=self.MODEL_ID, contents=writer_prompt, config=config_write)
             final_post = res_write.parsed
-
-            # 이미지 정보 최종 매핑 (순서 100% 보장)
-            image_info_list = []
-            for i in range(count):
-                v = vision_data[i]
-                image_info_list.append(ImageInfo(path="", category=v.category, description=v.description))
 
             return AnalyzeResult(
                 title=final_post.title,
                 content="",
-                blocks=[ContentBlock(type=b.type, value=b.value) for b in final_post.blocks],
+                blocks=[ContentBlock(type=b.type, value=b.value, style=b.style, image_indices=b.image_indices) for b in final_post.blocks],
                 tags=final_post.tags,
                 facts=place_data.model_dump(),
-                images=image_info_list
+                images=[ImageInfo(path="", category=v.category, description=v.description) for v in vision_data]
             )
         except Exception as e:
             traceback.print_exc()

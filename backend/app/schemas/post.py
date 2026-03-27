@@ -11,7 +11,8 @@ class ContentBlock(BaseModel):
     type: str  # text, sticker, quote, divider, map, image
     value: Optional[str] = None
     style: Optional[str] = None # quote의 경우 box, line 등
-    image_index: Optional[int] = None # image의 경우 몇 번째 사진인지
+    image_index: Optional[int] = None # 단일 이미지 (하위 호환)
+    image_indices: List[int] = [] # 콜라주용 다중 이미지 인덱스
 
 class AnalyzeResult(BaseModel):
     draft_id: Optional[str] = None

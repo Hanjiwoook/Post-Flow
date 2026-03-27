@@ -49,7 +49,7 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     );
   }
 
-  void _showMoveMenu(BuildContext context, int imageIndex, PostProvider provider) {
+  Future<bool?> _showMoveMenu(BuildContext context, int imageIndex, PostProvider provider) {
     final Map<String, String> categoryNames = {
       'EXTERIOR': '🏠 외관/건물',
       'INTERIOR': '🛋️ 매장 내부',
@@ -59,7 +59,7 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
       'OTHER': ' 기타 (인사/마무리)',
     };
 
-    showModalBottomSheet(
+    return showModalBottomSheet<bool>(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
@@ -76,7 +76,7 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                   title: Text(entry.value),
                   onTap: () {
                     provider.updateImageCategory(imageIndex, entry.key);
-                    Navigator.pop(context);
+                    Navigator.pop(context, true);
                   },
                 );
               }),
@@ -87,6 +87,65 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     );
   }
 
+  void _showImageDetail(BuildContext context, String path, int realIndex, PostProvider provider) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Stack(
+                alignment: Alignment.topRight,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(context).size.height * 0.7, // 최대 높이 제한
+                      ),
+                      child: InteractiveViewer(
+                        minScale: 1.0,
+                        maxScale: 4.0,
+                        child: Image.file(File(path), fit: BoxFit.contain),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white, size: 28, shadows: [Shadow(blurRadius: 8, color: Colors.black)]),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () async {
+                final bool? moved = await _showMoveMenu(context, realIndex, provider); // 이동 메뉴 팝업 띄우기
+                if (moved == true && context.mounted) {
+                  Navigator.pop(context); // 이동 완료된 경우에만 이미지 팝업 닫기
+                }
+              },
+              icon: const Icon(Icons.move_to_inbox),
+              label: const Text("다른 섹션으로 사진 이동", style: TextStyle(fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white, 
+                foregroundColor: Colors.indigo, 
+                elevation: 4,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
   Widget _buildInsightChip(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -183,7 +242,7 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                         : imgData['data']['path'];
                     
                     return GestureDetector(
-                      onTap: () => _showMoveMenu(context, realIndex, provider),
+                      onTap: () => _showImageDetail(context, path, realIndex, provider),
                       child: Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: ClipRRect(

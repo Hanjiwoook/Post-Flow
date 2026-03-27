@@ -237,15 +237,6 @@ async def publish_post(
             status="PROCESSING"
         )
     )
-    
-    return CommonResponse(
-        success=True,
-        message="발행 작업이 시작되었습니다.",
-        data=JobResponse(
-            job_id=", ".join(job_ids),
-            status="PROCESSING"
-        )
-    )
 
 @router.get("/history", response_model=CommonResponse[List[PostResponse]])
 async def get_history(db: Session = Depends(get_db)):

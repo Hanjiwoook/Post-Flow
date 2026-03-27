@@ -23,6 +23,12 @@ class _HomeScreenState extends State<HomeScreen> {
   final _parkingController = TextEditingController();
   final _waitingController = TextEditingController();
   final _menuController = TextEditingController();
+  final _specialNoteController = TextEditingController();
+
+  // 감성 데이터 상태
+  String _visitPurpose = '내돈내산';
+  int _rating = 5;
+  final List<String> _purposes = ['내돈내산', '데이트', '혼밥성지', '회식장소', '가족모임', '오픈런'];
 
   // 사진별 힌트 입력을 위한 컨트롤러 리스트
   List<TextEditingController> _imageHintControllers = [];
@@ -42,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _parkingController.dispose();
     _waitingController.dispose();
     _menuController.dispose();
+    _specialNoteController.dispose();
     for (var controller in _imageHintControllers) {
       controller.dispose();
     }
@@ -74,9 +81,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildInput(String hint, TextEditingController controller, IconData icon) {
+  Widget _buildInput(String hint, TextEditingController controller, IconData icon, {int maxLines = 1}) {
     return TextField(
       controller: controller,
+      maxLines: maxLines,
       decoration: InputDecoration(
         hintText: hint,
         prefixIcon: Icon(icon, size: 18),
@@ -115,7 +123,11 @@ class _HomeScreenState extends State<HomeScreen> {
           'parking': _parkingController.text,
           'waiting': _waitingController.text,
           'ordered_menu': _menuController.text,
-          'image_hints': imageHints, // 사진별 힌트 추가
+          'image_hints': imageHints,
+          // 감성 데이터 추가
+          'visit_purpose': _visitPurpose,
+          'special_note': _specialNoteController.text,
+          'rating': _rating.toString(),
           'owner_intro': _ownerIntro,
           'recent_event': _recentEvent,
           'amenities': _amenities.join(", "),
@@ -158,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const Text("📸 사진별 설명을 입력하면 AI가 더 정확하게 써줘요!", style: TextStyle(fontSize: 12, color: Colors.indigo, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
                   SizedBox(
-                    height: 220, // 높이 조절 (입력창 포함)
+                    height: 220,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
                       itemCount: provider.selectedImages.length,
@@ -201,9 +213,36 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(children: [Icon(Icons.edit_note, color: Colors.orange, size: 20), SizedBox(width: 8), Text("나의 방문 기록", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange, fontSize: 15))]),
+                        const Row(children: [Icon(Icons.edit_note, color: Colors.orange, size: 20), SizedBox(width: 8), Text("나의 방문 기록 (감성 부스터)", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange, fontSize: 15))]),
                         const SizedBox(height: 12),
-                        _buildInput("오늘 어떤 메뉴를 드셨나요? (쉼표 구분)", _menuController, Icons.restaurant_menu),
+                        const Text("방문 목적", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: _purposes.map((p) => Padding(
+                              padding: const EdgeInsets.only(right: 8.0),
+                              child: ChoiceChip(
+                                label: Text(p, style: TextStyle(fontSize: 12, color: _visitPurpose == p ? Colors.white : Colors.black87)),
+                                selected: _visitPurpose == p,
+                                selectedColor: Colors.orange,
+                                onSelected: (val) => setState(() => _visitPurpose = p),
+                              ),
+                            )).toList(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text("만족도 (별점)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        Row(
+                          children: List.generate(5, (index) => IconButton(
+                            icon: Icon(index < _rating ? Icons.star : Icons.star_border, color: Colors.orange),
+                            onPressed: () => setState(() => _rating = index + 1),
+                          )),
+                        ),
+                        const SizedBox(height: 12),
+                        _buildInput("오늘 어떤 메뉴를 드셨나요? (예: 돈코츠라멘)", _menuController, Icons.restaurant_menu),
+                        const SizedBox(height: 10),
+                        _buildInput("이곳의 첫인상이나 특별한 점 (AI 감성 부스터)", _specialNoteController, Icons.auto_awesome, maxLines: 2),
                         const SizedBox(height: 10),
                         _buildInput("웨이팅은 어땠나요? (예: 없음, 20분)", _waitingController, Icons.hourglass_empty),
                       ],

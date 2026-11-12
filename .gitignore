@@ -32,3 +32,10 @@ frontend/ios/Runner/GeneratedPluginRegistrant.*
 *.swp
 *.iml
 .aider*
+
+# Test photos / debug outputs (local only)
+KakaoTalk_*.jpg
+ykido/
+backend/debug_*
+debug_*.json
+backend/old/*.png

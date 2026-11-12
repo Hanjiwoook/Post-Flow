@@ -20,6 +20,9 @@ class Settings:
     BLOG_NAME: str = os.getenv("BLOG_NAME", "ohuks")
     BLOG_NICKNAME: str = os.getenv("BLOG_NICKNAME", "욱")
 
+    # Style Learning (크롤링 대상 블로그)
+    GF_BLOG_ID: str = os.getenv("GF_BLOG_ID", "")
+
     # Naver Automation
     NAVER_ID: str = os.getenv("NAVER_ID")
     NAVER_PW: str = os.getenv("NAVER_PW")

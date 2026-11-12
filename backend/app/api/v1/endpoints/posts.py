@@ -110,6 +110,7 @@ async def refine_post(
         result = await gemini_service.refine_content(
             request.title,
             request.content,
+            request.blocks,  # 현재 본문 블록 전달 (부분 수정용)
             request.facts,
             request.style,
             request.images, # 이미지 데이터 전달 추가

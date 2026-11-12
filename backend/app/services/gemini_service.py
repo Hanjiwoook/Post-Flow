@@ -58,7 +58,10 @@ class GeminiService:
         nickname = settings.BLOG_NICKNAME or "욱스"
         self.signature_greeting = f"안녕하세요! 맛집과 일상을 기록하는 '{nickname}'입니다. ✨ 오늘도 직접 발로 뛰어 찾은 리얼 맛집 정보를 전해드릴게요!"
         self.MODEL_ID = "gemini-2.5-flash"
-        print(f"🚀 GeminiService V12 (Influencer Edition) Initialized")
+        # 스타일 학습 서비스 연결
+        from .writing_style_service import writing_style_service
+        self.style_service = writing_style_service
+        print(f"🚀 GeminiService V12 (Influencer + Style Learning) Initialized")
 
     def _prepare_image_part(self, img: Image.Image) -> types.Part:
         if max(img.size) > 1024:
@@ -126,7 +129,59 @@ class GeminiService:
             # 지역명 추출 (주소에서 '구' 또는 '동' 단위 추출)
             location_keyword = place_data.address.split(' ')[1] if len(place_data.address.split(' ')) > 1 else ""
 
-            writer_prompt = f"""
+            # ✨ 스타일 프로필 로드 (학습된 글쓰기 스타일이 있으면 적용)
+            style_prompt_section = ""
+            active_profile = self.style_service.get_active_profile()
+            if active_profile:
+                style_prompt_section = self.style_service.generate_style_prompt(
+                    active_profile['profile_data'],
+                    active_profile['few_shot_examples']
+                )
+                print(f"  🎨 스타일 프로필 적용: '{active_profile['name']}'")
+            else:
+                print(f"  ℹ️ 활성 스타일 프로필 없음 → 기본 인플루언서 스타일 사용")
+
+            # 스타일 프로필 유무에 따라 프롬프트 분기
+            if style_prompt_section:
+                # 🎨 학습된 스타일이 있을 때: 해당 블로거 톤으로 작성
+                writer_prompt = f"""
+            {style_prompt_section}
+
+            [위 블로거의 글쓰기 스타일을 완벽히 모방해서 아래 팩트 기반으로 블로그 글을 작성해줘]
+            [AI스러운 표현 절대 금지. 위 예시의 말투, 어미, 감탄사, 이모지 패턴을 그대로 따라할 것]
+
+            [핵심 목표: 네이버 검색 노출(SEO) 최적화 제목 생성]
+            - 제목은 반드시 아래 공식을 따를 것: 
+              `[지역명(동/구 단위)] [주요메뉴] 맛집 [매장명] : [감성적인 한줄평]`
+            - 지역명 키워드: {location_keyword}
+            - 매장명: {place_data.place_name}
+            
+            [작성 가이드 - 순서 및 태그 엄수]
+            1. **[인사말] 섹션**: 반드시 `[인사말] {self.signature_greeting}`로 시작할 것.
+            2. **사진 우선 배치**: 각 섹션에서 **사진(`image`) 블록을 먼저** 두고, 그 아래에 설명(`text`) 블록을 작성해.
+            3. **콜라주 활용**: 외관(EXTERIOR)이나 내부(INTERIOR) 사진이 여러 장이면 하나의 `image` 블록에 `image_indices` 리스트로 묶어서 내보내.
+            
+            [블로그 템플릿 구조]
+            1. [인사말]: {purpose}와 {note} 반영하여 작성.
+            2. [매장 위치 & 정보]: `quote`(box)로 요약 정보.
+            3. [외관]: 사진들(콜라주) 먼저 -> 설명 텍스트.
+            4. [내부]: 사진들(콜라주) 먼저 -> 설명 텍스트.
+            5. [메뉴판]: 사진 먼저 -> 설명 텍스트.
+            6. [음식:메뉴명]: 사진 먼저 -> 상세 맛 묘사 텍스트.
+            7. [총평 & 마무리]: {rating_star} 반영하여 마무리.
+
+            [작성 규칙]
+            - 모든 텍스트 블록의 시작은 반드시 `[섹션명]`으로 시작. (예: [인사말], [외관], [음식:라멘])
+            - 각 섹션당 풍부한 묘사 필수.
+            
+            [제공된 팩트]
+            - 매장명: {place_data.place_name}
+            - 주소: {place_data.address}
+            - 사진 정보: {fact_list_str}
+            """
+            else:
+                # 기본 인플루언서 스타일 (스타일 프로필 없을 때)
+                writer_prompt = f"""
             너는 대한민국 최고의 맛집 인플루언서이자 전문 에디터야. 아래 가이드에 맞춰 포스팅을 작성해줘.
             
             [핵심 목표: 네이버 검색 노출(SEO) 최적화 제목 생성]
@@ -176,12 +231,47 @@ class GeminiService:
             traceback.print_exc()
             raise e
 
-    async def refine_content(self, title: str, content: str, facts: dict, style: str, images: List[ImageInfo] = [], instruction: str = None, template_name: str = None) -> AnalyzeResult:
-        prompt = f"재구성:\n제목:{title}\n본문:{content}\n팩트:{json.dumps(facts)}\n요청:{instruction}"
-        config = types.GenerateContentConfig(response_mime_type="application/json", response_schema=BlogPost, temperature=0.7, max_output_tokens=8192)
+    async def refine_content(self, title: str, content: str, blocks: list = [], facts: dict = {}, style: str = "professional", images: List[ImageInfo] = [], instruction: str = None, template_name: str = None) -> AnalyzeResult:
+        # 현재 블록 데이터를 텍스트로 변환하여 AI에게 전달
+        blocks_text = ""
+        for i, b in enumerate(blocks):
+            b_dict = b.model_dump() if hasattr(b, "model_dump") else b
+            b_type = b_dict.get("type", "text")
+            b_value = b_dict.get("value", "") or ""
+            b_indices = b_dict.get("image_indices", [])
+            if b_value:
+                blocks_text += f"[블록 {i}] type={b_type}, image_indices={b_indices}\n{b_value}\n\n"
+
+        prompt = f"""아래는 현재 블로그 포스팅의 전체 본문이야. 사용자가 특정 부분만 수정해달라고 요청했어.
+
+[현재 제목]: {title}
+
+[현재 본문 블록들]:
+{blocks_text}
+
+[사용자 수정 요청]: {instruction}
+
+[절대 규칙]
+1. 사용자가 요청한 부분만 정확히 수정하고, 나머지 블록은 절대 삭제하거나 변경하지 마.
+2. 블록의 type, 순서, image_indices를 반드시 그대로 유지해.
+3. 전체 블록 개수도 동일하게 유지해. 새 블록을 추가하거나 기존 블록을 합치지 마.
+4. 수정이 필요 없는 블록의 value는 원문 그대로 복사해서 내보내.
+"""
+        config = types.GenerateContentConfig(response_mime_type="application/json", response_schema=BlogPost, temperature=0.4, max_output_tokens=8192)
         response = self.client.models.generate_content(model=self.MODEL_ID, contents=prompt, config=config)
         res = response.parsed
-        return AnalyzeResult(title=res.title, content="", blocks=[ContentBlock(type=b.type, value=b.value) for b in res.blocks], tags=res.tags, facts=facts, images=images)
+        
+        # 응답 블록에 원본 image_indices 복원
+        result_blocks = []
+        original_blocks = [b.model_dump() if hasattr(b, "model_dump") else b for b in blocks]
+        for i, b in enumerate(res.blocks):
+            indices = b.image_indices if b.image_indices else []
+            # 원본 블록에서 image_indices 복원 (AI가 누락했을 경우)
+            if not indices and i < len(original_blocks):
+                indices = original_blocks[i].get("image_indices", [])
+            result_blocks.append(ContentBlock(type=b.type, value=b.value, style=b.style, image_indices=indices))
+        
+        return AnalyzeResult(title=res.title, content="", blocks=result_blocks, tags=res.tags, facts=facts, images=images)
 
     async def patch_sections(self, current_blocks: List[ContentBlock], new_facts: dict) -> List[ContentBlock]:
         info = f"{new_facts.get('place_name', '매장')} / {new_facts.get('address', '주소')} / {new_facts.get('business_hours', '시간')} / {new_facts.get('phone', '번호')} / {new_facts.get('parking', '주차')}"

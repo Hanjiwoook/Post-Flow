@@ -1,7 +1,9 @@
 from fastapi import APIRouter
-from .endpoints import system, posts
+from .endpoints import system, posts, style
 
 api_router = APIRouter()
 
 api_router.include_router(system.router, tags=["system"])
 api_router.include_router(posts.router, prefix="/posts", tags=["posts"])
+api_router.include_router(style.router, prefix="/style", tags=["style"])
+

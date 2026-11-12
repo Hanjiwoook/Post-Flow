@@ -92,11 +92,12 @@ class ApiService {
 
   // 4. 본문 내용 재구성 요청 (팩트 기반)
   static Future<Map<String, dynamic>> refineContent(
-      String title, String content, Map<String, dynamic> facts, String style, {List<dynamic> images = const [], String? instruction, String? templateName}) async {
+      String title, String content, Map<String, dynamic> facts, String style, {List<dynamic> images = const [], List<dynamic> blocks = const [], String? instruction, String? templateName}) async {
     var uri = Uri.parse('$baseUrl/posts/refine');
     var body = jsonEncode({
       'title': title,
       'content': content,
+      'blocks': blocks,
       'facts': facts,
       'images': images,
       'style': style,

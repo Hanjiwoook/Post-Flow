@@ -42,6 +42,7 @@ class PostPublishRequest(BaseModel):
 class RefineRequest(BaseModel):
     title: str
     content: str
+    blocks: List[ContentBlock] = []  # 현재 본문 블록 데이터 (부분 수정용)
     facts: dict
     images: List[ImageInfo] = [] # 기존 이미지 정보 유지용 추가
     instruction: Optional[str] = None

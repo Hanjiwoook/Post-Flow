@@ -275,7 +275,7 @@ class GeminiService:
 
     async def patch_sections(self, current_blocks: List[ContentBlock], new_facts: dict) -> List[ContentBlock]:
         info = f"{new_facts.get('place_name', '매장')} / {new_facts.get('address', '주소')} / {new_facts.get('business_hours', '시간')} / {new_facts.get('phone', '번호')} / {new_facts.get('parking', '주차')}"
-        return [ContentBlock(type="quote", value=f"[매장 위치 & 정보] {info}") if "[매장 위치 & 정보]" in b.value else b for b in current_blocks]
+        return [ContentBlock(type="quote", value=f"[매장 위치 & 정보] {info}") if "[매장 위치 & 정보]" in (b.value or "") else b for b in current_blocks]
 
     async def summarize_place_info(self, raw_text: str) -> dict:
         prompt = f"정보 요약: {raw_text[:10000]}"

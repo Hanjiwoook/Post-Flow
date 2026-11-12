@@ -3,6 +3,100 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/post_provider.dart';
 
+/// 편집 화면의 섹션 카드 하나 (사진 + 글)
+class EditorSection {
+  final String title;
+  final String text;
+  final int? textBlockIndex; // 글 블록 위치 (사진만 있는 섹션이면 null)
+  final int? imageBlockIndex; // 이 섹션 사진이 들어있는 image 블록 위치
+  final List<int> imageIndices; // 원본 사진 리스트에서의 번호
+
+  const EditorSection({
+    required this.title,
+    required this.text,
+    required this.textBlockIndex,
+    required this.imageBlockIndex,
+    required this.imageIndices,
+  });
+
+  /// 사진 이동 시 목표로 쓸 블록 위치
+  int get targetBlockIndex => textBlockIndex ?? imageBlockIndex!;
+}
+
+/// 섹션 목록 + 어느 섹션에도 들어가지 않은 사진
+class EditorLayout {
+  final List<EditorSection> sections;
+  final List<int> unplacedImages;
+  const EditorLayout(this.sections, this.unplacedImages);
+}
+
+/// 블록 순서대로 섹션을 만든다.
+/// 네이버 발행(naver_v2.py)과 똑같이 image 블록의 image_indices를 기준으로 사진을 배치하므로,
+/// 화면에 보이는 사진 위치 = 실제 발행되는 사진 위치가 된다.
+/// AI 프롬프트가 "사진 블록 먼저, 설명 글 다음" 순서를 요구하므로, image 블록은 바로 뒤의 글 블록과 한 섹션으로 묶는다.
+EditorLayout buildEditorLayout(List<dynamic> blocks, int imageCount) {
+  final sections = <EditorSection>[];
+  final placed = <int>{};
+  int? pendingImageBlock;
+  List<int> pendingImages = [];
+
+  void flushImageOnly() {
+    if (pendingImageBlock != null && pendingImages.isNotEmpty) {
+      sections.add(EditorSection(
+        title: '사진',
+        text: '',
+        textBlockIndex: null,
+        imageBlockIndex: pendingImageBlock,
+        imageIndices: pendingImages,
+      ));
+    }
+    pendingImageBlock = null;
+    pendingImages = [];
+  }
+
+  for (int i = 0; i < blocks.length; i++) {
+    final block = blocks[i] as Map;
+    final type = block['type'] ?? 'text';
+
+    if (type == 'image') {
+      flushImageOnly(); // 사진 블록이 연달아 오면 앞의 것은 사진만 있는 섹션으로
+      pendingImageBlock = i;
+      final raw = block['image_indices'];
+      final indices = <int>[
+        if (raw is List) ...raw.whereType<num>().map((n) => n.toInt()),
+        if (block['image_index'] is num) (block['image_index'] as num).toInt(), // 하위 호환
+      ];
+      // 범위를 벗어나거나 이미 다른 섹션에 쓰인 번호는 무시 (AI 응답 검증)
+      for (final idx in indices) {
+        if (idx >= 0 && idx < imageCount && placed.add(idx)) pendingImages.add(idx);
+      }
+    } else if (type == 'text' || type == 'quote') {
+      final value = block['value']?.toString() ?? '';
+      if (value.isEmpty) continue;
+      sections.add(EditorSection(
+        title: _sectionTitleOf(value),
+        text: value,
+        textBlockIndex: i,
+        imageBlockIndex: pendingImageBlock,
+        imageIndices: pendingImages,
+      ));
+      pendingImageBlock = null;
+      pendingImages = [];
+    }
+    // divider, map 등은 화면 카드로 만들지 않음
+  }
+  flushImageOnly();
+
+  final unplaced = [for (int i = 0; i < imageCount; i++) if (!placed.contains(i)) i];
+  return EditorLayout(sections, unplaced);
+}
+
+/// "[외관] 매장 외부는..." -> "외관"
+String _sectionTitleOf(String value) {
+  final match = RegExp(r'^\s*\[([^\]]+)\]').firstMatch(value);
+  return match?.group(1)?.trim() ?? '본문';
+}
+
 class PostEditorScreen extends StatefulWidget {
   const PostEditorScreen({super.key});
 
@@ -49,16 +143,7 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     );
   }
 
-  Future<bool?> _showMoveMenu(BuildContext context, int imageIndex, PostProvider provider) {
-    final Map<String, String> categoryNames = {
-      'EXTERIOR': '🏠 외관/건물',
-      'INTERIOR': '🛋️ 매장 내부',
-      'MENU': '📋 메뉴판/메뉴',
-      'FOOD_MAIN': '😋 음식/디저트',
-      'MAP': '📍 매장 위치/정보',
-      'OTHER': ' 기타 (인사/마무리)',
-    };
-
+  Future<bool?> _showMoveMenu(BuildContext context, int imageIndex, List<EditorSection> sections, PostProvider provider) {
     return showModalBottomSheet<bool>(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -70,16 +155,21 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
             children: [
               const Text("📸 사진 이동하기", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 10),
-              ...categoryNames.entries.map((entry) {
-                return ListTile(
-                  leading: const Icon(Icons.move_to_inbox, size: 20),
-                  title: Text(entry.value),
-                  onTap: () {
-                    provider.updateImageCategory(imageIndex, entry.key);
-                    Navigator.pop(context, true);
-                  },
-                );
-              }),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: sections.map((section) {
+                    return ListTile(
+                      leading: const Icon(Icons.move_to_inbox, size: 20),
+                      title: Text(section.title),
+                      onTap: () {
+                        provider.moveImageToSection(imageIndex, section.targetBlockIndex);
+                        Navigator.pop(context, true);
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
             ],
           ),
         );
@@ -87,7 +177,15 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     );
   }
 
-  void _showImageDetail(BuildContext context, String path, int realIndex, PostProvider provider) {
+  /// 사진 번호 -> 파일 경로. 방금 고른 사진이 있으면 그것을, 이력에서 불러왔으면 서버 저장 경로를 쓴다.
+  String? _imagePath(PostProvider provider, int index) {
+    if (index < provider.selectedImages.length) return provider.selectedImages[index].path;
+    final images = provider.generatedPost?['images'];
+    if (images is List && index < images.length) return images[index]['path']?.toString();
+    return null;
+  }
+
+  void _showImageDetail(BuildContext context, String path, int realIndex, List<EditorSection> sections, PostProvider provider) {
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -127,7 +225,7 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: () async {
-                final bool? moved = await _showMoveMenu(context, realIndex, provider); // 이동 메뉴 팝업 띄우기
+                final bool? moved = await _showMoveMenu(context, realIndex, sections, provider); // 이동 메뉴 팝업 띄우기
                 if (moved == true && context.mounted) {
                   Navigator.pop(context); // 이동 완료된 경우에만 이미지 팝업 닫기
                 }
@@ -155,22 +253,8 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
   }
 
   // 통합 섹션 카드 빌더
-  Widget _buildSectionItem(String sectionTitle, String categoryKey, List<dynamic> blocks, Map<String, List<Map<String, dynamic>>> groupedImages, PostProvider provider, {String? customBlockValue, int? customBlockIndex}) {
-    final sectionImages = groupedImages[categoryKey] ?? [];
-    String sectionText = customBlockValue ?? "";
-    int blockIndex = customBlockIndex ?? -1;
-    
-    if (customBlockValue == null) {
-      for (int i = 0; i < blocks.length; i++) {
-        final String val = blocks[i]['value']?.toString() ?? "";
-        if (val.contains(sectionTitle)) {
-          sectionText = val;
-          blockIndex = i;
-          break;
-        }
-      }
-    }
-
+  // [unplaced] true면 "배치 안 된 사진" 카드 (글·삭제 버튼 없음)
+  Widget _buildSectionItem(String sectionTitle, String sectionText, int? textBlockIndex, int? imageBlockIndex, List<int> sectionImages, List<EditorSection> allSections, PostProvider provider, {bool unplaced = false}) {
     if (sectionText.isEmpty && sectionImages.isEmpty) return const SizedBox.shrink();
 
     return Card(
@@ -198,7 +282,7 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                   ],
                 ),
                 // 섹션 삭제 버튼 추가
-                IconButton(
+                if (!unplaced) IconButton(
                   icon: const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
                   visualDensity: VisualDensity.compact,
                   onPressed: () {
@@ -211,9 +295,9 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                           TextButton(onPressed: () => Navigator.pop(context), child: const Text("취소")),
                           TextButton(
                             onPressed: () {
-                              if (blockIndex != -1) {
-                                provider.removeBlock(blockIndex);
-                              }
+                              // 뒤쪽 블록부터 지워야 앞쪽 블록 위치가 밀리지 않는다 (사진 블록은 항상 글 블록 앞)
+                              if (textBlockIndex != null) provider.removeBlock(textBlockIndex);
+                              if (imageBlockIndex != null) provider.removeBlock(imageBlockIndex);
                               Navigator.pop(context);
                             },
                             child: const Text("삭제", style: TextStyle(color: Colors.red)),
@@ -235,14 +319,12 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                   scrollDirection: Axis.horizontal,
                   itemCount: sectionImages.length,
                   itemBuilder: (context, index) {
-                    final imgData = sectionImages[index];
-                    final realIndex = imgData['index'];
-                    final path = provider.selectedImages.isNotEmpty 
-                        ? provider.selectedImages[realIndex].path 
-                        : imgData['data']['path'];
-                    
+                    final realIndex = sectionImages[index];
+                    final path = _imagePath(provider, realIndex);
+                    if (path == null) return const SizedBox.shrink();
+
                     return GestureDetector(
-                      onTap: () => _showImageDetail(context, path, realIndex, provider),
+                      onTap: () => _showImageDetail(context, path, realIndex, allSections, provider),
                       child: Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: ClipRRect(
@@ -255,17 +337,24 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                 ),
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextFormField(
-              key: Key(sectionText),
-              initialValue: sectionText,
-              maxLines: null,
-              decoration: const InputDecoration(border: InputBorder.none, isDense: true),
-              style: const TextStyle(fontSize: 15, height: 1.5),
-              onChanged: (val) { if (blockIndex != -1) provider.generatedPost!['blocks'][blockIndex]['value'] = val; },
+          if (unplaced)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: Text("본문 어디에도 배치되지 않은 사진입니다. 사진을 눌러 섹션으로 옮길 수 있고, 그대로 두면 네이버 발행 시 글 맨 끝에 올라갑니다.",
+                  style: TextStyle(fontSize: 12, color: Colors.black54)),
+            )
+          else if (textBlockIndex != null)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: TextFormField(
+                key: Key('$textBlockIndex-$sectionText'),
+                initialValue: sectionText,
+                maxLines: null,
+                decoration: const InputDecoration(border: InputBorder.none, isDense: true),
+                style: const TextStyle(fontSize: 15, height: 1.5),
+                onChanged: (val) { provider.generatedPost!['blocks'][textBlockIndex]['value'] = val; },
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -345,18 +434,10 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     final post = provider.generatedPost;
     if (post == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
-    final groupedImages = provider.getImagesByCategory();
     final List<dynamic> blocks = post['blocks'] ?? [];
     final facts = post['facts'] ?? {};
-    
-    // 음식(FOOD_ITEM) 블록들만 별도로 추출
-    final List<Map<String, dynamic>> foodBlocks = [];
-    for (int i = 0; i < blocks.length; i++) {
-      final String val = blocks[i]['value']?.toString() ?? "";
-      if (val.contains("[음식:")) {
-        foodBlocks.add({'index': i, 'value': val});
-      }
-    }
+    final List<dynamic> images = post['images'] ?? [];
+    final layout = buildEditorLayout(blocks, images.length);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -386,28 +467,16 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
               TextField(controller: _titleController, decoration: const InputDecoration(hintText: '제목', border: InputBorder.none), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               const Divider(height: 30),
 
-              // 섹션 리스트
-              _buildSectionItem("인사말", "OTHER", blocks, groupedImages, provider),
-              _buildSectionItem("매장 위치 & 정보", "MAP", blocks, groupedImages, provider),
-              _buildSectionItem("외관", "EXTERIOR", blocks, groupedImages, provider),
-              _buildSectionItem("내부", "INTERIOR", blocks, groupedImages, provider),
-              
-              // 메뉴판 섹션 (독립)
-              _buildSectionItem("메뉴판", "MENU", blocks, groupedImages, provider),
-              
-              // 음식 섹션 (동적 생성)
-              ...foodBlocks.map((fb) {
-                final String menuName = fb['value'].split(']')[0].replaceAll('[음식:', '');
-                return _buildSectionItem(
-                  "음식: $menuName", 
-                  "FOOD_ITEM:$menuName", // 카테고리 키도 메뉴명에 맞게 매칭
-                  blocks, groupedImages, provider,
-                  customBlockValue: fb['value'],
-                  customBlockIndex: fb['index']
-                );
-              }),
+              // 섹션 리스트: 블록 순서 그대로 (= 네이버에 발행되는 순서)
+              ...layout.sections.map((s) => _buildSectionItem(
+                    s.title, s.text, s.textBlockIndex, s.imageBlockIndex, s.imageIndices, layout.sections, provider,
+                  )),
 
-              _buildSectionItem("총평 & 마무리", "OTHER", blocks, groupedImages, provider),
+              // 어떤 섹션에도 들어가지 않은 사진 (조용히 사라지지 않도록 따로 보여줌)
+              _buildSectionItem(
+                "⚠️ 배치 안 된 사진", "", null, null, layout.unplacedImages, layout.sections, provider,
+                unplaced: true,
+              ),
               const SizedBox(height: 100),
             ],
           ),

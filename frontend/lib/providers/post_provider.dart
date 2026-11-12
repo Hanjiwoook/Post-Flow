@@ -109,6 +109,48 @@ class PostProvider with ChangeNotifier {
     }
   }
 
+  // 사진을 다른 섹션으로 옮긴다.
+  // 편집 화면과 네이버 발행이 모두 image 블록의 image_indices를 보므로, category가 아니라 image_indices를 바꾼다.
+  // targetBlockIndex: 옮겨갈 섹션의 글 블록(또는 사진만 있는 섹션이면 그 image 블록) 위치
+  void moveImageToSection(int imageIndex, int targetBlockIndex) {
+    if (_generatedPost == null || _generatedPost!['blocks'] == null) return;
+
+    final blocks = (_generatedPost!['blocks'] as List)
+        .map((b) => Map<String, dynamic>.from(b as Map))
+        .toList();
+    if (targetBlockIndex < 0 || targetBlockIndex >= blocks.length) return;
+
+    // 1. 원래 있던 image 블록에서 뺀다
+    for (final b in blocks) {
+      if (b['type'] == 'image') {
+        b['image_indices'] = _toIntList(b['image_indices']).where((i) => i != imageIndex).toList();
+      }
+    }
+
+    // 2. 목표 섹션의 image 블록에 넣는다 (섹션에 사진 블록이 없으면 글 바로 앞에 새로 만든다)
+    int imageBlockIndex;
+    if (blocks[targetBlockIndex]['type'] == 'image') {
+      imageBlockIndex = targetBlockIndex;
+    } else if (targetBlockIndex > 0 && blocks[targetBlockIndex - 1]['type'] == 'image') {
+      imageBlockIndex = targetBlockIndex - 1;
+    } else {
+      blocks.insert(targetBlockIndex, {'type': 'image', 'value': null, 'image_indices': <int>[]});
+      imageBlockIndex = targetBlockIndex;
+    }
+    blocks[imageBlockIndex]['image_indices'] = [
+      ..._toIntList(blocks[imageBlockIndex]['image_indices']),
+      imageIndex,
+    ];
+
+    _generatedPost!['blocks'] = blocks;
+    notifyListeners();
+  }
+
+  static List<int> _toIntList(dynamic raw) {
+    if (raw is! List) return [];
+    return raw.whereType<num>().map((n) => n.toInt()).toList();
+  }
+
   // 이미지 카테고리 변경 기능 추가
   void updateImageCategory(int index, String newCategory) {
     if (_generatedPost == null || _generatedPost!['images'] == null) return;
@@ -204,7 +246,9 @@ class PostProvider with ChangeNotifier {
     notifyListeners();
     
     try {
+      final originalBlocks = List<dynamic>.from(_generatedPost!['blocks'] ?? []);
       final images = List<dynamic>.from(_generatedPost!['images'] ?? []);
+      final blocks = List<dynamic>.from(originalBlocks);
       final result = await ApiService.refineContent(
         _generatedPost!['title'], 
         _generatedPost!['content'], 
@@ -212,14 +256,39 @@ class PostProvider with ChangeNotifier {
         'professional',
         instruction: instruction,
         images: images,
+        blocks: blocks,
       );
+      
+      // 스마트 머지: AI 응답 블록과 원본 블록을 비교하여 이미지/구조 보존
+      final resultBlocks = List<dynamic>.from(result['blocks'] ?? []);
+      final mergedBlocks = <dynamic>[];
+      
+      for (int i = 0; i < originalBlocks.length; i++) {
+        final orig = Map<String, dynamic>.from(originalBlocks[i]);
+        
+        if (orig['type'] == 'image' || orig['type'] == 'divider') {
+          // 이미지와 구분선 블록은 원본 그대로 유지 (AI가 건드리면 안 됨)
+          mergedBlocks.add(orig);
+        } else if (i < resultBlocks.length) {
+          // 텍스트/인용구 블록은 AI 결과 사용하되, image_indices는 원본에서 복원
+          final refined = Map<String, dynamic>.from(resultBlocks[i]);
+          if (orig['image_indices'] != null && (orig['image_indices'] as List).isNotEmpty) {
+            refined['image_indices'] = orig['image_indices'];
+          }
+          mergedBlocks.add(refined);
+        } else {
+          // AI가 블록을 줄여버린 경우, 원본 유지
+          mergedBlocks.add(orig);
+        }
+      }
       
       _generatedPost!['title'] = result['title'];
       _generatedPost!['content'] = result['content'];
       _generatedPost!['tags'] = result['tags'];
       _generatedPost!['facts'] = result['facts'];
-      _generatedPost!['blocks'] = result['blocks'];
-      _generatedPost!['images'] = result['images'];
+      _generatedPost!['blocks'] = mergedBlocks;
+      // images는 원본 유지 (AI가 건드리지 못하게)
+
       
     } catch (e) {
       print('Error refining with instruction: $e');

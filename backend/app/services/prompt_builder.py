@@ -161,10 +161,15 @@ def build_similar_hint(similar_groups: List[List[int]]) -> str:
 
 def build_closing_rules(facts: Dict, paid_by_self: bool, closing_phrase: Optional[str]) -> str:
     rating = _clean(facts.get("rating"))
-    lines = ["[맺음말]",
-             "- 마지막 글 블록 끝에 `.` 줄 두 개 → 총평 한두 문장 → 재방문 의사 한 줄(다음에 먹어 보고 싶은 메뉴와 함께) → `👍<가게 이름> 추천합니다👍` 순서로 쓴다."]
+    lines = ["[맺음말]"]
     if rating:
+        lines.append("- 마지막 글 블록 끝에 `.` 줄 두 개 → 총평 한두 문장 → 재방문 의사 한 줄(다음에 먹어 보고 싶은 메뉴와 함께) → `👍<가게 이름> 추천합니다👍` 순서로 쓴다.")
         lines.append(f"- 만족도는 {rating}점이다. 총평과 재방문 의사의 온도를 이 점수에 맞춘다 (낮으면 추천 줄을 빼도 된다).")
+    else:
+        # 만족도가 없으면 AI가 메모 분위기로 재방문·추천을 짐작해 쓰는 문제가 있었다 (2026-11-13 테스트)
+        lines.append("- 마지막 글 블록 끝에 `.` 줄 두 개 → 총평 한두 문장 순서로 쓴다.")
+        lines.append("- 만족도를 받지 못했다. 사용자 메모에 재방문이나 추천 의사가 직접 적혀 있을 때만 재방문 의사 한 줄과 `👍<가게 이름> 추천합니다👍`를 쓴다. "
+                     "적혀 있지 않으면 두 줄을 모두 빼고, writing_notes에 '만족도와 재방문 의사 확인 필요'라고 적는다. 메모의 분위기로 짐작해서 쓰지 않는다.")
     if paid_by_self:
         lines.append("- 직접 결제한 방문이다. 인사나 맺음말에 `내돈내산`을 한 번 쓴다. 영수증 사진(RECEIPT)이 있으면 맺음말 바로 앞에 1장으로 둔다.")
     else:

@@ -104,6 +104,19 @@ class TestOptions(unittest.TestCase):
     def test_zero_rating_is_ignored(self):
         self.assertNotIn("만족도는", build_writer_prompt({"rating": "0.0"}, PHOTOS))
 
+    def test_with_rating_revisit_and_recommend_are_required(self):
+        prompt = build_writer_prompt(FACTS, PHOTOS)
+        self.assertIn("재방문 의사 한 줄(다음에 먹어 보고 싶은 메뉴와 함께)", prompt)
+        self.assertNotIn("만족도를 받지 못했다", prompt)
+
+    def test_without_rating_revisit_is_not_guessed(self):
+        facts = {k: v for k, v in FACTS.items() if k != "rating"}
+        prompt = build_writer_prompt(facts, PHOTOS)
+        self.assertIn("만족도를 받지 못했다", prompt)
+        self.assertIn("짐작해서 쓰지 않는다", prompt)
+        self.assertIn("만족도와 재방문 의사 확인 필요", prompt)
+        self.assertNotIn("재방문 의사 한 줄(다음에 먹어 보고 싶은 메뉴와 함께) →", prompt)
+
 
 class TestSkeleton(unittest.TestCase):
     def test_skeleton_has_no_section_tags(self):

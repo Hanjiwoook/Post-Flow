@@ -22,7 +22,9 @@ class Settings:
     CLAUDE_MODEL_DEFAULT: str = os.getenv("CLAUDE_MODEL_DEFAULT", "claude-opus-5-5")
     CLAUDE_MODELS: dict = {
         "writer": os.getenv("CLAUDE_MODEL_WRITER", ""),    # 글쓰기 (사진 + 가게 정보)
-        "reviewer": os.getenv("CLAUDE_MODEL_REVIEWER", ""),  # 파워블로거 검토
+        # 검토·보강 고쳐쓰기는 Sonnet으로 시작 (11/13 사용자 결정, 비교 결과 충분)
+        "reviewer": os.getenv("CLAUDE_MODEL_REVIEWER", "claude-sonnet-5-5"),  # 파워블로거 검토
+        "reviser": os.getenv("CLAUDE_MODEL_REVISER", "claude-sonnet-5-5"),   # 검토 반영 고쳐쓰기
         "summary": os.getenv("CLAUDE_MODEL_SUMMARY", ""),   # 가게 정보 요약
         "style": os.getenv("CLAUDE_MODEL_STYLE", ""),     # 스타일 학습
         "refine": os.getenv("CLAUDE_MODEL_REFINE", ""),    # AI 부분 수정

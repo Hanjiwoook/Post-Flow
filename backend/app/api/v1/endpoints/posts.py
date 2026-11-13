@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from ....services.gemini_service import gemini_service
 from ....services.llm_client import LLMError
 from ....services.post_writer import write_post
+from ....services.post_reviewer import review_post
+from ....schemas.review import ReviewRequest, ReviewResult
 from ....services.automation.naver_v2 import naver_automation_v2
 from ....services.automation.tistory import tistory_automation
 from ....schemas.post import AnalyzeResult, PostPublishRequest, JobResponse, PostResponse, RefineRequest, PatchRequest
@@ -101,6 +103,21 @@ async def analyze_post(
             message="AI 분석 중 오류가 발생했습니다.",
             error=str(e)
         )
+
+@router.post("/review", response_model=CommonResponse[ReviewResult])
+async def review_draft(request: ReviewRequest):
+    """
+    파워블로거 검수: 초안의 점수, 문제점, 빠진 정보, 사용자에게 할 질문을 돌려준다.
+    글은 고치지 않는다 (고쳐 쓰기는 사용자 답변을 받은 뒤 별도 단계).
+    """
+    try:
+        result = await review_post(request.title, request.blocks, request.facts,
+                                   request.images, request.writing_notes)
+        return CommonResponse(success=True, message="검수 완료", data=result)
+    except LLMError as e:
+        return CommonResponse(success=False, message=str(e), error="LLM_ERROR")
+    except Exception as e:
+        return CommonResponse(success=False, message="검수 중 오류가 발생했습니다.", error=str(e))
 
 @router.post("/refine", response_model=CommonResponse[AnalyzeResult])
 async def refine_post(

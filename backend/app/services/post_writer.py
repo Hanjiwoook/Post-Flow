@@ -134,7 +134,7 @@ def _style_samples() -> List[str]:
         return []
 
 
-def _flag(facts: Dict, key: str) -> bool:
+def fact_flag(facts: Dict, key: str) -> bool:
     """앱이 보낸 체크칸 값 (true/"true"/1 등)을 bool로."""
     return str(facts.get(key, "")).lower() in ("true", "1", "yes", "y")
 
@@ -143,8 +143,8 @@ async def write_post(images: List[Image.Image], facts: Dict, client: LLMClient =
     """사진과 가게 정보로 블로그 글을 쓴다. 실패하면 LLMError가 난다."""
     hints = facts.get("image_hints") or []
     photos = [{"hint": hints[i] if i < len(hints) else ""} for i in range(len(images))]
-    sponsored = _flag(facts, "sponsored")
-    paid_by_self = _flag(facts, "paid_by_self") and not sponsored  # 둘 다 오면 협찬을 따른다
+    sponsored = fact_flag(facts, "sponsored")
+    paid_by_self = fact_flag(facts, "paid_by_self") and not sponsored  # 둘 다 오면 협찬을 따른다
 
     prompt = build_writer_prompt(
         facts,
@@ -175,7 +175,7 @@ async def write_post(images: List[Image.Image], facts: Dict, client: LLMClient =
     blocks, excluded, fixes = sanitize_images(writer_blocks, excluded_notes, len(images))
     if receipts:
         fixes.append(f"글에 들어간 영수증 사진 {receipts}을 뺐어요")
-    if sponsored and _flag(facts, "paid_by_self"):
+    if sponsored and fact_flag(facts, "paid_by_self"):
         fixes.append("내돈내산과 협찬이 둘 다 체크되어 협찬으로 썼어요")
     notes = list(post.writing_notes) + [f"(코드 검증) {f}" for f in fixes]
 

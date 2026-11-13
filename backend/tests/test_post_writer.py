@@ -13,8 +13,8 @@ from PIL import Image
 
 from app.services.llm_client import LLMError, LLMResult
 from app.services.post_writer import (
-    PHOTO_REPORT_RULE, UNREPORTED_REASON, ExcludedNote, PhotoNote, WriterBlock, WrittenPost,
-    sanitize_images, write_post,
+    PHOTO_REPORT_RULE, RECEIPT_REASON, UNREPORTED_REASON, ExcludedNote, PhotoNote, WriterBlock, WrittenPost,
+    drop_receipts, sanitize_images, write_post,
 )
 
 
@@ -89,7 +89,48 @@ class TestSanitizeImages(unittest.TestCase):
         self.assertEqual(excluded, [])
 
 
+class TestDropReceipts(unittest.TestCase):
+    PHOTOS = [PhotoNote(index=0, category="FOOD_ITEM:라멘", description=""),
+              PhotoNote(index=1, category="RECEIPT", description="영수증")]
+
+    def test_receipt_removed_from_mixed_block(self):
+        blocks, removed = drop_receipts([WriterBlock(type="image", image_indices=[0, 1])], self.PHOTOS)
+        self.assertEqual(blocks[0].image_indices, [0])
+        self.assertEqual(removed, [1])
+
+    def test_receipt_only_block_dropped(self):
+        blocks, removed = drop_receipts([WriterBlock(type="image", image_indices=[1]),
+                                         WriterBlock(type="text", value="글")], self.PHOTOS)
+        self.assertEqual([b.type for b in blocks], ["text"])
+        self.assertEqual(removed, [1])
+
+    def test_no_receipt_no_change(self):
+        original = [WriterBlock(type="image", image_indices=[0])]
+        blocks, removed = drop_receipts(original, self.PHOTOS)
+        self.assertEqual(blocks, original)
+        self.assertEqual(removed, [])
+
+
 class TestWritePost(unittest.IsolatedAsyncioTestCase):
+    async def test_receipt_in_post_is_moved_to_excluded(self):
+        post = written(
+            blocks=[WriterBlock(type="text", value=GOOD_TEXT), WriterBlock(type="image", image_indices=[0, 1]),
+                    WriterBlock(type="image", image_indices=[2]), WriterBlock(type="text", value=CLOSING)],
+            excluded=[])
+        post.photos.append(PhotoNote(index=2, category="RECEIPT", description="영수증"))
+        result = await write_post([img("red"), img("blue"), img("green")], {}, client=FakeLLM(post))
+        used = [i for b in result.blocks if b.type == "image" for i in b.image_indices]
+        self.assertEqual(used, [0, 1])
+        self.assertEqual([(e.index, e.reason) for e in result.excluded_images], [(2, RECEIPT_REASON)])
+        self.assertTrue(any("영수증" in n for n in result.writing_notes))
+
+    async def test_prompt_says_no_receipt(self):
+        fake = FakeLLM()
+        await write_post([img("red")], {"paid_by_self": True}, client=fake)
+        prompt = fake.calls[0]["content"][-1]["text"]
+        self.assertIn("영수증 사진은 글에 넣지 않는다", prompt)
+        self.assertNotIn("맺음말 바로 앞에 1장으로", prompt)
+
     async def test_content_has_labeled_photos_then_prompt(self):
         fake = FakeLLM()
         await write_post([img("red"), img("blue"), img("green")], {"place_name": "테스트식당"}, client=fake)

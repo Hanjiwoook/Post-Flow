@@ -8,7 +8,7 @@
 
 AI 응답은 그대로 믿지 않고 코드로 한 번 더 검증한다 (사진 번호 범위, 중복, 누락).
 """
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Tuple
 
 from PIL import Image
 from pydantic import BaseModel, Field
@@ -56,6 +56,26 @@ PHOTO_REPORT_RULE = """\
 - photos에는 쓴 사진과 뺀 사진을 모두 넣는다. 사진마다 번호, 분류(EXTERIOR, INTERIOR, MENU, FOOD_ITEM:메뉴명, RECEIPT 중 하나), 보이는 그대로의 짧은 설명을 적는다."""
 
 UNREPORTED_REASON = "AI가 사용 여부를 밝히지 않은 사진이에요"
+RECEIPT_REASON = "영수증 사진은 개인정보(카드번호 등) 때문에 올리지 않아요"
+
+
+def drop_receipts(blocks: List[WriterBlock], photos: List[PhotoNote]) -> Tuple[List[WriterBlock], List[int]]:
+    """
+    AI가 RECEIPT로 분류한 사진을 글에서 뺀다 (지시를 어겨도 코드가 막는다).
+    반환: (사진을 뺀 블록 목록, 뺀 영수증 번호)
+    """
+    receipts = {p.index for p in photos if p.category.upper().startswith("RECEIPT")}
+    removed = []
+    clean = []
+    for block in blocks:
+        if block.type == "image" and receipts & set(block.image_indices):
+            removed += [i for i in block.image_indices if i in receipts]
+            kept = [i for i in block.image_indices if i not in receipts]
+            if not kept:
+                continue
+            block = block.model_copy(update={"image_indices": kept})
+        clean.append(block)
+    return clean, removed
 
 
 # --- 사진 번호 검증 ---
@@ -149,7 +169,12 @@ async def write_post(images: List[Image.Image], facts: Dict, client: LLMClient =
     result = await client.parse("writer", content, WrittenPost)
     post: WrittenPost = result.parsed
 
-    blocks, excluded, fixes = sanitize_images(post.blocks, post.excluded_images, len(images))
+    writer_blocks, receipts = drop_receipts(post.blocks, post.photos)
+    excluded_notes = [n for n in post.excluded_images if n.index not in receipts]
+    excluded_notes += [ExcludedNote(index=i, reason=RECEIPT_REASON) for i in receipts]
+    blocks, excluded, fixes = sanitize_images(writer_blocks, excluded_notes, len(images))
+    if receipts:
+        fixes.append(f"글에 들어간 영수증 사진 {receipts}을 뺐어요")
     if sponsored and _flag(facts, "paid_by_self"):
         fixes.append("내돈내산과 협찬이 둘 다 체크되어 협찬으로 썼어요")
     notes = list(post.writing_notes) + [f"(코드 검증) {f}" for f in fixes]

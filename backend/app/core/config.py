@@ -12,9 +12,21 @@ class Settings:
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     
-    # Gemini AI
+    # Gemini AI (Claude로 옮기는 중. 4-5단계에서 제거)
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY")
     GEMINI_MODEL_NAME: str = "gemini-2.5-flash"
+
+    # Claude AI
+    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    # 용도별 모델. .env에서 CLAUDE_MODEL_WRITER=claude-sonnet-5-5 처럼 바꿀 수 있다.
+    CLAUDE_MODEL_DEFAULT: str = os.getenv("CLAUDE_MODEL_DEFAULT", "claude-opus-5-5")
+    CLAUDE_MODELS: dict = {
+        "writer": os.getenv("CLAUDE_MODEL_WRITER", ""),    # 글쓰기 (사진 + 가게 정보)
+        "reviewer": os.getenv("CLAUDE_MODEL_REVIEWER", ""),  # 파워블로거 검토
+        "summary": os.getenv("CLAUDE_MODEL_SUMMARY", ""),   # 가게 정보 요약
+        "style": os.getenv("CLAUDE_MODEL_STYLE", ""),     # 스타일 학습
+        "refine": os.getenv("CLAUDE_MODEL_REFINE", ""),    # AI 부분 수정
+    }
 
     # Branding
     BLOG_NAME: str = os.getenv("BLOG_NAME", "ohuks")

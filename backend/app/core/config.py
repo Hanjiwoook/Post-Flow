@@ -32,6 +32,9 @@ class Settings:
     BLOG_NAME: str = os.getenv("BLOG_NAME", "ohuks")
     BLOG_NICKNAME: str = os.getenv("BLOG_NICKNAME", "욱")
 
+    # 글 마지막 줄 고정 감사 인사 (블로그 원문 문구라 저장소에 적지 않고 .env에 둔다)
+    BLOG_CLOSING_PHRASE: str = os.getenv("BLOG_CLOSING_PHRASE", "")
+
     # Style Learning (크롤링 대상 블로그)
     GF_BLOG_ID: str = os.getenv("GF_BLOG_ID", "")
 

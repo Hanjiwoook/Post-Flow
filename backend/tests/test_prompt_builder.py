@@ -75,6 +75,23 @@ class TestOptions(unittest.TestCase):
         self.assertIn("`내돈내산`을 한 번 쓴다", build_writer_prompt(FACTS, PHOTOS, paid_by_self=True))
         self.assertIn("`내돈내산`이라는 말은 쓰지 않는다", build_writer_prompt(FACTS, PHOTOS))
 
+    def test_sponsored_requires_disclosure(self):
+        prompt = build_writer_prompt(FACTS, PHOTOS, sponsored=True, sponsor_detail="식사 2인")
+        self.assertIn("[협찬 표시]", prompt)
+        self.assertIn("제공받은 것: 식사 2인", prompt)
+        self.assertIn("첫 글 블록(인사) 안에", prompt)
+        self.assertNotIn("`내돈내산`을 한 번 쓴다", prompt)
+
+    def test_sponsored_overrides_paid(self):
+        prompt = build_writer_prompt(FACTS, PHOTOS, paid_by_self=True, sponsored=True)
+        self.assertIn("[협찬 표시]", prompt)
+        self.assertNotIn("직접 결제한 방문이다", prompt)
+
+    def test_sponsor_detail_optional(self):
+        prompt = build_writer_prompt(FACTS, PHOTOS, sponsored=True)
+        self.assertNotIn("제공받은 것:", prompt)
+        self.assertIn("업체로부터 협찬을 받아 작성한 글입니다", prompt)
+
     def test_closing_phrase(self):
         self.assertIn("그대로 쓴다: 💕고마워요💕",
                       build_writer_prompt(FACTS, PHOTOS, closing_phrase="💕고마워요💕"))

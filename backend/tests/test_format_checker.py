@@ -126,6 +126,21 @@ class TestSingleRules(unittest.TestCase):
         self.assertIn("검색용 제목", {r.rule for r in report.warnings})
         self.assertTrue(report.passed)  # 제목은 경고일 뿐 통과에 영향 없음
 
+    def test_sponsor_rule_only_when_sponsored(self):
+        self.assertNotIn("협찬 표시", {r.rule for r in check_post(good_post()).results})
+        self.assertIn("협찬 표시", {r.rule for r in check_post(good_post(), sponsored=True).errors})
+
+    def test_sponsor_disclosure_in_first_text_passes(self):
+        blocks = good_post()
+        blocks[0] = text("안녕하세요 😊", "업체로부터 식사를", "제공받아 작성한 글입니다")
+        self.assertTrue(check_post(blocks, title="테스트식당 라멘 맛집 추천", sponsored=True).passed)
+
+    def test_sponsored_post_with_naedon_fails(self):
+        blocks = good_post()
+        blocks[0] = text("안녕하세요 😊", "협찬으로 다녀왔어요")
+        report = check_post(blocks, title="테스트식당 라멘 맛집 내돈내산", sponsored=True)
+        self.assertIn("협찬 표시", {r.rule for r in report.errors})
+
     def test_title_rule_skipped_without_title(self):
         self.assertNotIn("검색용 제목", {r.rule for r in check_post(good_post()).results})
 

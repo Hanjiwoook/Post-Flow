@@ -8,6 +8,8 @@ import shutil
 from sqlalchemy.orm import Session
 
 from ....services.gemini_service import gemini_service
+from ....services.llm_client import LLMError
+from ....services.post_writer import write_post
 from ....services.automation.naver_v2 import naver_automation_v2
 from ....services.automation.tistory import tistory_automation
 from ....schemas.post import AnalyzeResult, PostPublishRequest, JobResponse, PostResponse, RefineRequest, PatchRequest
@@ -65,12 +67,10 @@ async def analyze_post(
             abs_path = os.path.abspath(file_path)
             saved_image_paths.append(abs_path)
         
-        # AI 서비스 호출 (initial_facts 전달)
-        result = await gemini_service.analyze_images(pil_images, style, template_name, facts_dict)
+        # Claude 글쓰기 (사진 + 앱이 보낸 가게 정보 원본). style은 더 이상 쓰지 않는다.
+        result = await write_post(pil_images, facts_dict)
         result.template_name = template_name
-        
-        # ... (이하 동일)
-        
+
         # 결과에 이미지 정보 업데이트 (저장된 경로 및 카테고리 매칭)
         # AnalyzeResult의 images 리스트에 저장된 실제 경로(path)를 채워줌
         for i, img_info in enumerate(result.images):
@@ -92,6 +92,9 @@ async def analyze_post(
             data=result
         )
 
+    except LLMError as e:
+        # 키 없음, 크레딧 부족, 거절 등. 사용자에게 보여 줄 수 있는 한국어 메시지다.
+        return CommonResponse(success=False, message=str(e), error="LLM_ERROR")
     except Exception as e:
         return CommonResponse(
             success=False,

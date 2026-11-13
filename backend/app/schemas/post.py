@@ -14,6 +14,10 @@ class ContentBlock(BaseModel):
     image_index: Optional[int] = None # 단일 이미지 (하위 호환)
     image_indices: List[int] = [] # 콜라주용 다중 이미지 인덱스
 
+class ExcludedImage(BaseModel):
+    index: int
+    reason: str
+
 class AnalyzeResult(BaseModel):
     draft_id: Optional[str] = None
     template_name: Optional[str] = None # 추가
@@ -26,6 +30,11 @@ class AnalyzeResult(BaseModel):
     image_paths: List[str] = []
     atmosphere: Optional[str] = None
     location: Optional[str] = None
+    # Claude 글쓰기 결과 (2026-11 추가)
+    excluded_images: List[ExcludedImage] = []  # AI가 뺀 사진과 이유
+    writing_notes: List[str] = []              # 어떤 정보를 어디에 썼는지, 확인이 필요한 점
+    format_check: Optional[dict] = None        # format_checker 채점 결과
+    usage: Optional[dict] = None               # 모델, 토큰 수, 추정 비용
 
 class PostPublishRequest(BaseModel):
     draft_id: str

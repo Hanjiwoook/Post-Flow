@@ -7,7 +7,7 @@
 - 내용은 사진, 가게 정보, 사용자 메모에서만 가져오게 한다 (지어내기 금지).
 - 숫자 기준은 format_checker 상수를 그대로 써서, AI에게 시킨 기준과 채점 기준을 맞춘다.
 
-아직 gemini_service에 연결하지 않았다 (Gemini API가 필요한 다음 단계에서 연결).
+post_writer(/analyze 글쓰기)가 이 지시문을 쓴다.
 """
 from typing import Dict, List, Optional
 
@@ -136,12 +136,20 @@ def build_fact_list(facts: Dict) -> str:
 
 
 def build_photo_list(photos: List[Dict]) -> str:
-    """photos: [{"category": ..., "description": ..., "hint": ...}, ...] (리스트 순서 = 사진 번호)"""
+    """
+    photos: [{"category": ..., "description": ..., "hint": ...}, ...] (리스트 순서 = 사진 번호)
+    category/description이 없으면 AI가 첨부된 사진을 직접 보고 판단한다는 뜻으로 적는다.
+    """
     if not photos:
         return "- (사진 없음)"
     lines = []
     for i, photo in enumerate(photos):
-        line = f"- 사진 {i} ({_clean(photo.get('category')) or '분류 없음'}): {_clean(photo.get('description'))}"
+        category = _clean(photo.get("category"))
+        description = _clean(photo.get("description"))
+        if category or description:
+            line = f"- 사진 {i} ({category or '분류 없음'}): {description}"
+        else:
+            line = f"- 사진 {i}: 첨부한 사진 {i}번을 직접 보고 판단"
         hint = _clean(photo.get("hint"))
         if hint:
             line += f" / 사용자 설명: {hint}"
@@ -159,7 +167,26 @@ def build_similar_hint(similar_groups: List[List[int]]) -> str:
     return "\n".join(lines)
 
 
-def build_closing_rules(facts: Dict, paid_by_self: bool, closing_phrase: Optional[str]) -> str:
+def build_disclosure_rules(paid_by_self: bool, sponsored: bool, sponsor_detail: str) -> str:
+    """내돈내산/협찬 표시. 협찬을 숨기면 광고 표시 규정 위반이 될 수 있어서 협찬이 우선이다."""
+    if sponsored:
+        detail = f" 제공받은 것: {sponsor_detail}." if sponsor_detail else ""
+        return f"""\
+[협찬 표시] (반드시 지킨다)
+- 이 방문은 협찬이다.{detail}
+- 첫 글 블록(인사) 안에 `업체로부터 ○○을 제공받아 작성한 글입니다`처럼 협찬 사실을 한 줄로 분명히 쓴다. 제공받은 것을 모르면 `업체로부터 협찬을 받아 작성한 글입니다`라고 쓴다.
+- 맺음말에도 협찬 사실을 한 번 더 짧게 쓴다.
+- `내돈내산`, `직접 결제`, `광고 아님`처럼 협찬과 반대되는 말은 쓰지 않는다. 제목에도 `내돈내산`을 넣지 않는다."""
+    if paid_by_self:
+        return """\
+[내돈내산 표시]
+- 직접 결제한 방문이다. 인사나 맺음말에 `내돈내산`을 한 번 쓴다. 영수증 사진(RECEIPT)이 있으면 맺음말 바로 앞에 1장으로 둔다."""
+    return """\
+[내돈내산 표시]
+- `내돈내산`이라는 말은 쓰지 않는다 (직접 결제했는지 확인되지 않았다)."""
+
+
+def build_closing_rules(facts: Dict, closing_phrase: Optional[str]) -> str:
     rating = _clean(facts.get("rating"))
     lines = ["[맺음말]"]
     if rating:
@@ -170,10 +197,6 @@ def build_closing_rules(facts: Dict, paid_by_self: bool, closing_phrase: Optiona
         lines.append("- 마지막 글 블록 끝에 `.` 줄 두 개 → 총평 한두 문장 순서로 쓴다.")
         lines.append("- 만족도를 받지 못했다. 사용자 메모에 재방문이나 추천 의사가 직접 적혀 있을 때만 재방문 의사 한 줄과 `👍<가게 이름> 추천합니다👍`를 쓴다. "
                      "적혀 있지 않으면 두 줄을 모두 빼고, writing_notes에 '만족도와 재방문 의사 확인 필요'라고 적는다. 메모의 분위기로 짐작해서 쓰지 않는다.")
-    if paid_by_self:
-        lines.append("- 직접 결제한 방문이다. 인사나 맺음말에 `내돈내산`을 한 번 쓴다. 영수증 사진(RECEIPT)이 있으면 맺음말 바로 앞에 1장으로 둔다.")
-    else:
-        lines.append("- `내돈내산`이라는 말은 쓰지 않는다 (직접 결제했는지 확인되지 않았다).")
     if closing_phrase:
         lines.append(f"- 글의 마지막 줄은 이 감사 인사를 글자 하나 바꾸지 말고 그대로 쓴다: {closing_phrase}")
     else:
@@ -189,7 +212,7 @@ def build_title_rules(facts: Dict) -> str:
   `[{place}] <지역> <특징> <메뉴> 맛집 <내돈내산/솔직리뷰/추천 중 1~2개>`
   `{place} <지역> <메뉴>맛집 솔직리뷰 (<대표 메뉴>, <검색 키워드>)`
 - 지역은 주소에서 동/역 이름이나 랜드마크로 쓴다. 카페면 `맛집` 대신 `카페`.
-- `내돈내산`은 위 [맺음말] 규칙에서 허용된 경우에만 쓴다."""
+- `내돈내산`은 [내돈내산 표시] 규칙에서 허용된 경우에만 쓴다. 협찬 글에는 쓰지 않는다."""
 
 
 def build_style_samples(samples: List[str]) -> str:
@@ -212,6 +235,8 @@ def build_writer_prompt(
     photos: List[Dict],
     paid_by_self: bool = False,
     closing_phrase: Optional[str] = None,
+    sponsored: bool = False,
+    sponsor_detail: str = "",
     style_samples: Optional[List[str]] = None,
     similar_groups: Optional[List[List[int]]] = None,
 ) -> str:
@@ -221,6 +246,8 @@ def build_writer_prompt(
     facts: 앱 홈 화면이 보내는 가게 정보 (place_name, address, waiting, ordered_menu, ...)
     photos: 사진 분석 결과 목록. 순서가 사진 번호다. [{"category", "description", "hint"}]
     paid_by_self: 사용자가 직접 결제했다고 확인했을 때만 True (내돈내산 표기)
+    sponsored: 협찬 방문이면 True. paid_by_self보다 우선한다 (협찬 사실을 글 첫 부분과 맺음말에 밝힌다)
+    sponsor_detail: 제공받은 것 (예: "식사 2인")
     closing_phrase: 매 글 고정 감사 인사. 없으면 지어내지 않고 생략시킨다.
     style_samples: 말투 참고용 원본 글 일부. 각 글에서 앞 MAX_SAMPLE_LINES줄만 쓴다.
     similar_groups: photo_dedup.group_similar 결과 (거의 같은 사진 묶음)
@@ -232,7 +259,8 @@ def build_writer_prompt(
         SKELETON,
         build_style_samples(style_samples or []),
         PHOTO_SELECTION,
-        build_closing_rules(facts, paid_by_self, closing_phrase),
+        build_disclosure_rules(paid_by_self, sponsored, _clean(sponsor_detail)),
+        build_closing_rules(facts, closing_phrase),
         build_title_rules(facts),
         NO_FABRICATION,
         f"[가게 정보 인용구]\n{info_quote}" if info_quote else "[가게 정보 인용구]\n(알려진 항목이 없다. 정보 인용구는 빼고 가게 이름 인용구와 지도만 쓴다)",

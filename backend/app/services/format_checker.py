@@ -228,8 +228,25 @@ def _check_title(title: str) -> CheckResult:
                        f"내돈내산/솔직리뷰/추천 {'있음' if has_hook else '없음'}")
 
 
-def check_post(blocks: List[Any], title: Optional[str] = None) -> FormatReport:
-    """글 블록(과 제목)이 블로그 포맷 규칙을 지키는지 검사한다."""
+SPONSOR_WORDS = ["협찬", "제공받"]
+
+
+def _check_sponsor_disclosure(blocks: List[Dict], text_blocks: List[Dict], title: Optional[str]) -> CheckResult:
+    """협찬 글: 첫 글 블록에 협찬 표시가 있고, 어디에도 '내돈내산'이 없어야 한다."""
+    first = (text_blocks[0].get("value") or "") if text_blocks else ""
+    disclosed = any(w in first for w in SPONSOR_WORDS)
+    contradicts = "내돈내산" in _all_text(blocks) or "내돈내산" in (title or "")
+    detail = []
+    if not disclosed:
+        detail.append("첫 글에 협찬 표시 없음")
+    if contradicts:
+        detail.append("'내돈내산' 표현 있음")
+    return CheckResult("협찬 표시", ERROR, disclosed and not contradicts,
+                       ", ".join(detail) if detail else "첫 글에 협찬 표시 있음")
+
+
+def check_post(blocks: List[Any], title: Optional[str] = None, sponsored: bool = False) -> FormatReport:
+    """글 블록(과 제목)이 블로그 포맷 규칙을 지키는지 검사한다. sponsored면 협찬 표시도 검사한다."""
     blocks = [_to_dict(b) for b in blocks]
     text_blocks = [b for b in blocks if b["type"] == "text"]
     lines = _content_lines(text_blocks)
@@ -254,4 +271,6 @@ def check_post(blocks: List[Any], title: Optional[str] = None) -> FormatReport:
     ]
     if title is not None:
         results.append(_check_title(title))
+    if sponsored:
+        results.append(_check_sponsor_disclosure(blocks, text_blocks, title))
     return FormatReport([r for r in results if r is not None])

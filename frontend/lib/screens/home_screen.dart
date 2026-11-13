@@ -24,11 +24,17 @@ class _HomeScreenState extends State<HomeScreen> {
   final _waitingController = TextEditingController();
   final _menuController = TextEditingController();
   final _specialNoteController = TextEditingController();
+  final _sponsorDetailController = TextEditingController();
 
   // 감성 데이터 상태
-  String _visitPurpose = '내돈내산';
-  int _rating = 5;
-  final List<String> _purposes = ['내돈내산', '데이트', '혼밥성지', '회식장소', '가족모임', '오픈런'];
+  // 기본값을 비워 둔다: 사용자가 고르지 않은 값이 AI에게 사실처럼 전달되지 않게 한다
+  String _visitPurpose = '';
+  int _rating = 0; // 0 = 별점 선택 안 함 (AI는 만족도를 모르는 것으로 처리)
+  final List<String> _purposes = ['데이트', '혼밥성지', '회식장소', '가족모임', '오픈런'];
+
+  // 결제 방식: 둘 중 하나만 체크된다 (협찬을 숨기면 광고 표시 규정 위반이 될 수 있다)
+  bool _paidBySelf = false; // 내돈내산
+  bool _sponsored = false;  // 협찬
 
   // 사진별 힌트 입력을 위한 컨트롤러 리스트
   List<TextEditingController> _imageHintControllers = [];
@@ -49,6 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _waitingController.dispose();
     _menuController.dispose();
     _specialNoteController.dispose();
+    _sponsorDetailController.dispose();
     for (var controller in _imageHintControllers) {
       controller.dispose();
     }
@@ -128,6 +135,9 @@ class _HomeScreenState extends State<HomeScreen> {
           'visit_purpose': _visitPurpose,
           'special_note': _specialNoteController.text,
           'rating': _rating.toString(),
+          'paid_by_self': _paidBySelf,
+          'sponsored': _sponsored,
+          'sponsor_detail': _sponsored ? _sponsorDetailController.text : '',
           'owner_intro': _ownerIntro,
           'recent_event': _recentEvent,
           'amenities': _amenities.join(", "),
@@ -226,19 +236,52 @@ class _HomeScreenState extends State<HomeScreen> {
                                 label: Text(p, style: TextStyle(fontSize: 12, color: _visitPurpose == p ? Colors.white : Colors.black87)),
                                 selected: _visitPurpose == p,
                                 selectedColor: Colors.orange,
-                                onSelected: (val) => setState(() => _visitPurpose = p),
+                                // 다시 누르면 선택 해제
+                                onSelected: (val) => setState(() => _visitPurpose = val ? p : ''),
                               ),
                             )).toList(),
                           ),
                         ),
                         const SizedBox(height: 12),
-                        const Text("만족도 (별점)", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        Text(_rating == 0 ? "만족도 (별점) - 선택 안 함" : "만족도 (별점) - $_rating점",
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                         Row(
                           children: List.generate(5, (index) => IconButton(
                             icon: Icon(index < _rating ? Icons.star : Icons.star_border, color: Colors.orange),
-                            onPressed: () => setState(() => _rating = index + 1),
+                            // 같은 별을 다시 누르면 선택 해제
+                            onPressed: () => setState(() => _rating = _rating == index + 1 ? 0 : index + 1),
                           )),
                         ),
+                        const SizedBox(height: 4),
+                        const Text("결제 방식", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        CheckboxListTile(
+                          value: _paidBySelf,
+                          onChanged: (v) => setState(() {
+                            _paidBySelf = v ?? false;
+                            if (_paidBySelf) _sponsored = false;
+                          }),
+                          title: const Text("내돈내산 (직접 결제)", style: TextStyle(fontSize: 14)),
+                          subtitle: const Text("글에 '내돈내산'을 밝히고, 영수증 사진이 있으면 맺음말 앞에 넣어요", style: TextStyle(fontSize: 11)),
+                          dense: true, contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          activeColor: Colors.orange,
+                        ),
+                        CheckboxListTile(
+                          value: _sponsored,
+                          onChanged: (v) => setState(() {
+                            _sponsored = v ?? false;
+                            if (_sponsored) _paidBySelf = false;
+                          }),
+                          title: const Text("협찬 (제공받음)", style: TextStyle(fontSize: 14)),
+                          subtitle: const Text("글 첫 부분과 맺음말에 협찬 사실을 밝혀요", style: TextStyle(fontSize: 11)),
+                          dense: true, contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          activeColor: Colors.orange,
+                        ),
+                        if (_sponsored) ...[
+                          _buildInput("무엇을 제공받았나요? (예: 식사 2인, 음료 쿠폰)", _sponsorDetailController, Icons.card_giftcard),
+                          const SizedBox(height: 4),
+                        ],
                         const SizedBox(height: 12),
                         _buildInput("오늘 어떤 메뉴를 드셨나요? (예: 돈코츠라멘)", _menuController, Icons.restaurant_menu),
                         const SizedBox(height: 10),

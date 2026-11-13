@@ -18,6 +18,7 @@
 """
 import re
 import statistics
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -34,17 +35,31 @@ MAX_EMOJI_PER_LINE = 3
 MAX_CONSECUTIVE_IMAGES = 2
 MIN_CLOSING_DOT_LINES = 2
 
+# AI 느낌 신호 (2026-11-13, 원본 5편 vs Claude 결과 비교로 정함)
+#   - 줄 끝 마침표: 원본 0~3%, Sonnet 결과 32%
+#   - 이모지를 글자에 붙여 쓰는 비율: 원본 60~100%, Sonnet 결과 14%
+#   - 가장 많이 쓴 끝맺음 비중: 원본 최대 9%, Sonnet 결과 24%
+#   - '~구요': 원본 100줄당 2~5회, Opus 결과 75줄 중 13회
+MAX_PERIOD_END_RATIO = 0.10
+MIN_EMOJI_ATTACHED_RATIO = 0.50
+MIN_EMOJI_LINES_FOR_CHECK = 3
+MAX_TOP_ENDING_RATIO = 0.15
+MAX_GUYO_RATIO = 0.08       # 긴 글: 줄 수의 8%까지
+MIN_GUYO_ALLOWED = 3        # 짧은 글: 3번까지는 항상 허용 (비율만 보면 짧은 글이 억울하게 걸린다)
+
 # 과장된 광고 말투 (명세서 4절). 원본 글에 한 번도 나오지 않는다.
 HYPE_PHRASES = ["인생 맛집", "인생맛집", "미쳤다", "역대급", "강력 추천드립니다", "강력추천드립니다"]
 # AI 같은 설명 말투. 원본에도 '특히'가 한 번 나오므로 여러 번 쓸 때만 경고한다.
-AI_PHRASES = ["특히", "또한", "다양한 메뉴를 제공", "경험할 수 있"]
+# 뒤쪽은 흔한 AI 맛 표현으로, 원본 5편에는 한 번도 나오지 않는다.
+AI_PHRASES = ["특히", "또한", "다양한 메뉴를 제공", "경험할 수 있",
+              "느낄 수 있", "조화를 이루", "어우러", "풍미", "환상적", "일품", "선사", "인상적"]
 MAX_AI_PHRASES = 1
 
 TITLE_TYPE_WORDS = ["맛집", "카페"]
 TITLE_HOOK_WORDS = ["내돈내산", "솔직리뷰", "추천"]
 
-_ZWSP = "​"
-_EMOJI = re.compile("[\U0001F300-\U0001FAFF☀-➿⭐⏳]")
+_ZWSP = "\u200b"
+_EMOJI = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF\u2B50\u23F3]")
 _SECTION_TAG = re.compile(r"^\[[^\]]{1,20}\]")
 
 
@@ -200,6 +215,53 @@ def _check_emoji(lines: List[str]) -> Optional[CheckResult]:
                        f"한 줄 최대 {max(per_line)}개 (기준 {MAX_EMOJI_PER_LINE} 이하)")
 
 
+def _plain(line: str) -> str:
+    """이모지와 앞뒤 공백을 뺀 줄 (끝맺음 비교용)."""
+    return _EMOJI.sub("", line).strip()
+
+
+def _check_period_endings(lines: List[str]) -> Optional[CheckResult]:
+    if not lines:
+        return None
+    ratio = sum(_plain(line).endswith(".") for line in lines) / len(lines)
+    return CheckResult("줄 끝 마침표 없음", ERROR, ratio <= MAX_PERIOD_END_RATIO,
+                       f"마침표로 끝나는 줄 {ratio:.0%} (기준 {MAX_PERIOD_END_RATIO:.0%} 이하)")
+
+
+def _check_emoji_attached(lines: List[str]) -> Optional[CheckResult]:
+    """'맛있어요😋'처럼 이모지를 앞 글자에 붙여 쓰는지. 줄이 이모지로 시작하면 세지 않는다."""
+    attached = spaced = 0
+    for line in lines:
+        match = _EMOJI.search(line)
+        if not match or match.start() == 0:
+            continue
+        if line[match.start() - 1].isspace():
+            spaced += 1
+        else:
+            attached += 1
+    total = attached + spaced
+    if total < MIN_EMOJI_LINES_FOR_CHECK:
+        return None
+    ratio = attached / total
+    return CheckResult("이모지 붙여 쓰기", WARNING, ratio >= MIN_EMOJI_ATTACHED_RATIO,
+                       f"글자에 붙인 이모지 {ratio:.0%} (기준 {MIN_EMOJI_ATTACHED_RATIO:.0%} 이상)")
+
+
+def _check_ending_variety(lines: List[str]) -> Optional[CheckResult]:
+    """같은 끝맺음이 반복되면 단조롭고 AI처럼 읽힌다."""
+    if len(lines) < 10:
+        return None
+    endings = [_plain(line)[-3:] for line in lines if _plain(line)]
+    top, top_count = Counter(endings).most_common(1)[0]
+    top_ratio = top_count / len(lines)
+    guyo = sum("구요" in _plain(line)[-4:] for line in lines)
+    guyo_limit = max(MIN_GUYO_ALLOWED, int(len(lines) * MAX_GUYO_RATIO))
+    ok = top_ratio <= MAX_TOP_ENDING_RATIO and guyo <= guyo_limit
+    return CheckResult("끝맺음 다양성", WARNING, ok,
+                       f"가장 많은 끝맺음 '{top}' {top_ratio:.0%} (기준 {MAX_TOP_ENDING_RATIO:.0%} 이하), "
+                       f"'~구요' {guyo}회 (기준 {guyo_limit}회 이하)")
+
+
 def _check_hype_phrases(text: str) -> CheckResult:
     found = [p for p in HYPE_PHRASES if p in text]
     return CheckResult("과장 표현 없음", ERROR, not found, f"발견: {found}" if found else "없음")
@@ -265,6 +327,9 @@ def check_post(blocks: List[Any], title: Optional[str] = None, sponsored: bool =
         _check_image_pair_ratio(image_counts),
         _check_image_then_text(blocks),
         _check_emoji(lines),
+        _check_period_endings(lines),
+        _check_emoji_attached(lines),
+        _check_ending_variety(lines),
         _check_hype_phrases(text),
         _check_ai_phrases(text),
         _check_closing(text_blocks),

@@ -71,7 +71,7 @@ class TestGoodPost(unittest.TestCase):
 
     def test_zero_width_space_lines_are_ignored(self):
         blocks = good_post()
-        blocks[0] = text("안녕하세요 😊", "​", "오늘은 테스트식당에", "다녀왔어요!")
+        blocks[0] = text("안녕하세요 😊", "\u200b", "오늘은 테스트식당에", "다녀왔어요!")
         self.assertTrue(check_post(blocks).passed)
 
 
@@ -140,6 +140,38 @@ class TestSingleRules(unittest.TestCase):
         blocks[0] = text("안녕하세요 😊", "협찬으로 다녀왔어요")
         report = check_post(blocks, title="테스트식당 라멘 맛집 내돈내산", sponsored=True)
         self.assertIn("협찬 표시", {r.rule for r in report.errors})
+
+    def test_period_endings_are_error(self):
+        blocks = good_post()
+        blocks[5] = text("가게 앞에 도착했어요.", "웨이팅이 있었어요.", "20분 기다렸어요.", "들어갔어요.")
+        self.assertIn("줄 끝 마침표 없음", {r.rule for r in check_post(blocks).errors})
+
+    def test_dot_only_lines_are_not_period_endings(self):
+        # '.' 한 글자 구분 줄은 원본 형식이라 마침표로 세지 않는다
+        self.assertNotIn("줄 끝 마침표 없음", failed_rules(check_post(good_post())))
+
+    def test_spaced_emoji_warns(self):
+        blocks = good_post()
+        blocks[5] = text("맛있어요 😋", "최고예요 🤩", "또 올게요 💕", "좋았어요 😊")
+        self.assertIn("이모지 붙여 쓰기", {r.rule for r in check_post(blocks).warnings})
+
+    def test_attached_emoji_passes(self):
+        blocks = good_post()
+        blocks[5] = text("맛있어요😋", "최고예요🤩", "좋았어요😊", "가게 앞에 도착")
+        self.assertNotIn("이모지 붙여 쓰기", failed_rules(check_post(blocks)))
+
+    def test_emoji_rule_skipped_with_few_emojis(self):
+        self.assertNotIn("이모지 붙여 쓰기", {r.rule for r in check_post(good_post()).results})
+
+    def test_repeated_guyo_warns(self):
+        blocks = good_post()
+        blocks[5] = text(*[f"메뉴{i}도 있구요" for i in range(8)])
+        self.assertIn("끝맺음 다양성", {r.rule for r in check_post(blocks).warnings})
+
+    def test_ai_taste_cliches_warn(self):
+        blocks = good_post()
+        blocks[5] = text("풍미가 가득하고", "재료가 어우러져요")
+        self.assertIn("AI 말투 절제", {r.rule for r in check_post(blocks).warnings})
 
     def test_title_rule_skipped_without_title(self):
         self.assertNotIn("검색용 제목", {r.rule for r in check_post(good_post()).results})

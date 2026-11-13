@@ -66,6 +66,21 @@ class TestWriterPrompt(unittest.TestCase):
         self.assertNotIn("욱스", self.prompt)
         self.assertNotIn("[인사말]", self.prompt)
 
+    def test_human_rhythm_rules(self):
+        self.assertIn("줄 끝에 마침표(.)를 찍지 않는다", self.prompt)
+        self.assertIn("앞 글자에 붙여 쓴다", self.prompt)
+        self.assertIn("`~구요`는 글 전체에서 서너 번만", self.prompt)
+
+    def test_taste_expression_section(self):
+        self.assertIn("6. 맛 표현", self.prompt)
+        self.assertIn("먹는 장면으로 풀어 쓴다", self.prompt)
+        self.assertIn("풍미", self.prompt)  # 흔한 AI 맛 표현 금지 목록
+
+    def test_no_weather_or_visit_history_guessing(self):
+        self.assertNotIn("날씨·계절·상황", self.prompt)
+        self.assertIn("날씨와 기온은 사실 목록에 없으면 쓰지 않는다", self.prompt)
+        self.assertIn("`이번에도`", self.prompt)
+
     def test_rating_is_passed_to_closing(self):
         self.assertIn("만족도는 4점", self.prompt)
 

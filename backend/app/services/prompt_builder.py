@@ -149,6 +149,16 @@ def build_photo_list(photos: List[Dict]) -> str:
     return "\n".join(lines)
 
 
+def build_similar_hint(similar_groups: List[List[int]]) -> str:
+    """photo_dedup.group_similar 결과를 힌트로 만든다. 각 묶음은 선명한 사진이 앞에 있다."""
+    if not similar_groups:
+        return ""
+    lines = ["[거의 같은 사진] (코드가 찾은 연사. 각 묶음에서 보통 1장만 쓰고, 앞 번호가 가장 선명하다)"]
+    for group in similar_groups:
+        lines.append("- 사진 " + ", ".join(str(i) for i in group))
+    return "\n".join(lines)
+
+
 def build_closing_rules(facts: Dict, paid_by_self: bool, closing_phrase: Optional[str]) -> str:
     rating = _clean(facts.get("rating"))
     lines = ["[맺음말]",
@@ -198,6 +208,7 @@ def build_writer_prompt(
     paid_by_self: bool = False,
     closing_phrase: Optional[str] = None,
     style_samples: Optional[List[str]] = None,
+    similar_groups: Optional[List[List[int]]] = None,
 ) -> str:
     """
     글쓰기 AI에게 줄 전체 지시문을 만든다.
@@ -207,6 +218,7 @@ def build_writer_prompt(
     paid_by_self: 사용자가 직접 결제했다고 확인했을 때만 True (내돈내산 표기)
     closing_phrase: 매 글 고정 감사 인사. 없으면 지어내지 않고 생략시킨다.
     style_samples: 말투 참고용 원본 글 일부. 각 글에서 앞 MAX_SAMPLE_LINES줄만 쓴다.
+    similar_groups: photo_dedup.group_similar 결과 (거의 같은 사진 묶음)
     """
     info_quote = build_info_quote(facts)
     parts = [
@@ -221,5 +233,6 @@ def build_writer_prompt(
         f"[가게 정보 인용구]\n{info_quote}" if info_quote else "[가게 정보 인용구]\n(알려진 항목이 없다. 정보 인용구는 빼고 가게 이름 인용구와 지도만 쓴다)",
         f"[사실 목록]\n{build_fact_list(facts)}",
         f"[사진 목록]\n{build_photo_list(photos)}",
+        build_similar_hint(similar_groups or []),
     ]
     return "\n\n".join(p for p in parts if p)

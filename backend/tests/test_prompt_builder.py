@@ -95,6 +95,12 @@ class TestOptions(unittest.TestCase):
         self.assertIn("정보 인용구는 빼고", prompt)
         self.assertIn("(사진 없음)", prompt)
 
+    def test_similar_groups_hint(self):
+        prompt = build_writer_prompt(FACTS, PHOTOS, similar_groups=[[1, 0]])
+        self.assertIn("[거의 같은 사진]", prompt)
+        self.assertIn("- 사진 1, 0", prompt)
+        self.assertNotIn("[거의 같은 사진]", build_writer_prompt(FACTS, PHOTOS))
+
     def test_zero_rating_is_ignored(self):
         self.assertNotIn("만족도는", build_writer_prompt({"rating": "0.0"}, PHOTOS))
 

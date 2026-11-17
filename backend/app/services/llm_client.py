@@ -153,19 +153,22 @@ class LLMClient:
             raise LLMError("Claude API에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.")
 
         request_id = getattr(response, "_request_id", None)
+
+        # 실패한 응답도 비용이 청구되므로, 검사보다 먼저 사용량을 기록한다
+        # 거절되어 다른 모델이 대신 답했으면 그 모델 이름이 온다
+        used_model = response.model or model
+        usage = response.usage
+        cost = estimate_cost(used_model, usage.input_tokens, usage.output_tokens)
+        cost_text = f"${cost:.4f}" if cost is not None else "가격 정보 없음"
+        print(f"  💰 [{role}] {used_model}: 입력 {usage.input_tokens:,} / 출력 {usage.output_tokens:,} 토큰, "
+              f"추정 {cost_text} (stop_reason={response.stop_reason}, request_id={request_id})")
+
         if response.stop_reason == "refusal":
             raise LLMError("AI가 이 요청에 대한 응답을 거절했습니다.")
         if response.stop_reason == "max_tokens":
             raise LLMError("AI 응답이 너무 길어 중간에 끊겼습니다.")
         if response.parsed_output is None:
             raise LLMError("AI 응답을 정해진 형식으로 읽지 못했습니다.")
-
-        # 거절되어 다른 모델이 대신 답했으면 그 모델 이름이 온다
-        used_model = response.model or model
-        usage = response.usage
-        cost = estimate_cost(used_model, usage.input_tokens, usage.output_tokens)
-        cost_text = f"${cost:.4f}" if cost is not None else "가격 정보 없음"
-        print(f"  💰 [{role}] {used_model}: 입력 {usage.input_tokens:,} / 출력 {usage.output_tokens:,} 토큰, 추정 {cost_text}")
 
         return LLMResult(
             parsed=response.parsed_output,

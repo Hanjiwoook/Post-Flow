@@ -70,6 +70,7 @@ class TestReviewPost(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call["role"], "reviewer")
         self.assertIs(call["output_format"], Review)
         self.assertEqual(call["system"], SYSTEM)
+        self.assertEqual(call["effort"], "medium")  # high에서 생각 토큰이 한도를 넘었다
         prompt = call["content"][0]["text"]
         self.assertIn("[정보 체크리스트]", prompt)
         self.assertIn("- 웨이팅: 없음", prompt)          # 사실 목록

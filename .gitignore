@@ -39,3 +39,6 @@ ykido/
 backend/debug_*
 debug_*.json
 backend/old/*.png
+
+# 로컬 실험 결과 (실제 블로그 글, 테스트 사진 기반 결과 포함, 공개 금지)
+local_runs/

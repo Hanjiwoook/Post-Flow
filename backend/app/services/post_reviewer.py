@@ -16,6 +16,7 @@ from .post_writer import fact_flag
 from .prompt_builder import build_fact_list
 
 MAX_QUESTIONS = 5
+REVIEW_EFFORT = "medium"
 
 # 맛집 후기에 흔히 들어가는 정보 항목 (우리 말로 정리한 체크리스트)
 INFO_CHECKLIST = [
@@ -105,7 +106,8 @@ async def review_post(
     ])
 
     print(f"\n🧐 [Reviewer] 초안 검수 시작 (블록 {len(blocks)}개)")
-    result = await client.parse("reviewer", [text_block(prompt)], Review, system=SYSTEM)
+    # 검수는 읽고 평가하는 일이라 effort를 낮춘다. high에서는 생각 토큰이 한도(16,000)를 넘어 응답이 끊겼다 (11/13).
+    result = await client.parse("reviewer", [text_block(prompt)], Review, system=SYSTEM, effort=REVIEW_EFFORT)
     review: Review = result.parsed
 
     return ReviewResult(

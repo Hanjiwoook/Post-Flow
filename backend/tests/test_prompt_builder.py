@@ -5,7 +5,7 @@ prompt_builder 단위 테스트. Gemini를 부르지 않고, 만들어진 지시
 """
 import unittest
 
-from app.services.format_checker import HYPE_PHRASES, LONG_LINE_LEN
+from app.services.format_checker import HYPE_PHRASES, MIN_PHOTO_TEXT_LINES
 from app.services.prompt_builder import (
     SKELETON, build_info_quote, build_photo_list, build_writer_prompt,
 )
@@ -53,7 +53,14 @@ class TestWriterPrompt(unittest.TestCase):
         self.assertNotIn("📞전화번호 :", self.prompt)
 
     def test_shares_numbers_with_checker(self):
-        self.assertIn(f"{LONG_LINE_LEN}자를 넘기지 않는다", self.prompt)
+        self.assertIn(f"최소 {MIN_PHOTO_TEXT_LINES}줄 이상", self.prompt)
+
+    def test_no_length_caps(self):
+        # 2026-11-17 결정: 틀만 따르고 줄 길이·분량 상한은 두지 않는다
+        self.assertIn("한 호흡(의미 단위)마다 줄을 바꿔", self.prompt)
+        self.assertIn("글 전체 길이에 상한은 없다", self.prompt)
+        for cap in ("10~16자", "3~6줄", "자를 넘기지 않는다"):
+            self.assertNotIn(cap, self.prompt)
         for phrase in HYPE_PHRASES:
             self.assertIn(phrase, self.prompt)
 

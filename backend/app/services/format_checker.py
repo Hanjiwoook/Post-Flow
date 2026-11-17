@@ -8,7 +8,8 @@
 - warning: 원본 글에서도 가끔 벗어나는 경향. 참고용으로만 알려 준다.
 
 기준 숫자는 2026-11-13에 원본 맛집 글 5편을 측정해서 정했다.
-  - 한 줄 길이 중앙값 12~15자, 25자 넘는 줄 비율 최대 8.6%
+  - 길이는 상한을 두지 않는다 (2026-11-17 결정: 틀만 따르고, 정보가 많으면 길어도 된다).
+    대신 너무 짧은 글과 1줄짜리 사진 설명만 warning으로 알려 준다. 원본 5편은 공백 제외 571~2,061자.
   - 사진 묶음은 모두 1~3장, 2장 묶음 비율 52~75%
   - 이모지가 있는 줄 비율 8~19%, 한 줄 최대 3개
 
@@ -17,7 +18,6 @@
   - 앱 형식(ContentBlock): {"type": "image", "image_indices": [0, 1]}
 """
 import re
-import statistics
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -25,9 +25,8 @@ from typing import Any, Dict, List, Optional
 ERROR = "error"
 WARNING = "warning"
 
-MAX_MEDIAN_LINE_LEN = 16
-LONG_LINE_LEN = 25
-MAX_LONG_LINE_RATIO = 0.10
+MIN_TOTAL_CHARS = 500           # 원본 5편 중 가장 짧은 글 571자(공백 제외)보다 조금 낮게
+MIN_PHOTO_TEXT_LINES = 2        # 사진 뒤 설명 글이 1줄로 끝나면 읽는 사람이 얻는 정보가 없다
 MAX_IMAGE_GROUP = 3
 MIN_PAIR_RATIO = 0.40
 MAX_EMOJI_LINE_RATIO = 0.30
@@ -172,16 +171,21 @@ def _check_info_quote(blocks: List[Dict]) -> Optional[CheckResult]:
     return CheckResult("가게 정보 인용구", ERROR, ok, "🚩위치 인용구 있음" if ok else "🚩위치 인용구 없음")
 
 
-def _check_line_length(lines: List[str]) -> CheckResult:
-    if not lines:
-        return CheckResult("짧은 줄", ERROR, False, "글 줄이 없음")
-    lengths = [len(line) for line in lines]
-    median = statistics.median(lengths)
-    long_ratio = sum(n > LONG_LINE_LEN for n in lengths) / len(lengths)
-    ok = median <= MAX_MEDIAN_LINE_LEN and long_ratio <= MAX_LONG_LINE_RATIO
-    return CheckResult("짧은 줄", ERROR, ok,
-                       f"중앙값 {median:g}자 (기준 {MAX_MEDIAN_LINE_LEN} 이하), "
-                       f"{LONG_LINE_LEN}자 초과 {long_ratio:.0%} (기준 {MAX_LONG_LINE_RATIO:.0%} 이하)")
+def _check_min_length(text: str) -> CheckResult:
+    chars = len(re.sub(r"\s", "", text.replace(_ZWSP, "")))
+    return CheckResult("너무 짧은 글", WARNING, chars >= MIN_TOTAL_CHARS,
+                       f"본문 {chars:,}자, 공백 제외 (기준 {MIN_TOTAL_CHARS}자 이상)")
+
+
+def _check_photo_text_lines(blocks: List[Dict]) -> Optional[CheckResult]:
+    pairs = [(i, b) for i, (a, b) in enumerate(zip(blocks, blocks[1:]), start=1)
+             if a["type"] == "image" and b["type"] == "text"]
+    if not pairs:
+        return None
+    thin = [i for i, b in pairs if len([l for l in _raw_lines(b) if l != "."]) < MIN_PHOTO_TEXT_LINES]
+    return CheckResult("사진 설명 충분", WARNING, not thin,
+                       f"{MIN_PHOTO_TEXT_LINES}줄보다 짧은 사진 설명 블록 {thin}" if thin
+                       else f"사진 뒤 글 {len(pairs)}개 모두 {MIN_PHOTO_TEXT_LINES}줄 이상")
 
 
 def _check_image_group_size(counts: List[int]) -> CheckResult:
@@ -322,7 +326,8 @@ def check_post(blocks: List[Any], title: Optional[str] = None, sponsored: bool =
         _check_no_section_tags(lines),
         _check_no_divider(blocks),
         _check_no_hashtags_or_stars(lines),
-        _check_line_length(lines),
+        _check_min_length(text),
+        _check_photo_text_lines(blocks),
         _check_image_group_size(image_counts),
         _check_image_pair_ratio(image_counts),
         _check_image_then_text(blocks),

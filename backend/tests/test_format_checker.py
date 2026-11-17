@@ -56,7 +56,8 @@ class TestGoodPost(unittest.TestCase):
     def test_passes_without_errors_or_warnings(self):
         report = check_post(good_post(), title="테스트식당 어딘가동 라멘 맛집 내돈내산 추천")
         self.assertTrue(report.passed, report.summary())
-        self.assertEqual(report.warnings, [], report.summary())
+        # 가짜 글은 테스트용이라 짧다. 분량 경고만 빼고 warning이 없어야 한다
+        self.assertEqual([w.rule for w in report.warnings], ["너무 짧은 글"], report.summary())
 
     def test_accepts_app_content_blocks(self):
         # 앱 형식(image_indices)과 ContentBlock 객체도 같은 결과여야 한다
@@ -81,11 +82,43 @@ class TestOldAiPost(unittest.TestCase):
         self.assertFalse(report.passed)
         self.assertTrue({
             "도입부 순서", "섹션 제목 없음", "구분선 없음", "해시태그·별점 기호 없음",
-            "짧은 줄", "사진 묶음 1~3장", "과장 표현 없음", "맺음말 앞 '.' 줄",
+            "사진 묶음 1~3장", "과장 표현 없음", "맺음말 앞 '.' 줄",
         } <= failed_rules(report), report.summary())
 
     def test_ai_phrases_warn(self):
         self.assertIn("AI 말투 절제", {r.rule for r in check_post(old_ai_post()).warnings})
+
+
+class TestLengthRules(unittest.TestCase):
+    """2026-11-17: 길이 상한은 없애고 너무 짧은 것만 warning으로 알린다."""
+
+    def test_long_lines_are_allowed(self):
+        blocks = good_post()
+        blocks[5] = text("가게 앞에 도착하니 벌써 웨이팅이 꽤 길게 있었는데 회전이 빨라서 금방 들어갔어요",
+                         "저는 20분 정도 기다렸어요")
+        self.assertTrue(check_post(blocks).passed)
+
+    def test_long_post_has_no_length_warning(self):
+        blocks = good_post()
+        blocks[-1] = text(*(["국물이 진하고 면이 쫄깃해서 계속 손이 갔어요"] * 30), ".", ".", "다음에 또 올게요")
+        self.assertNotIn("너무 짧은 글", failed_rules(check_post(blocks)))
+
+    def test_short_post_warns_but_passes(self):
+        report = check_post(good_post())
+        self.assertIn("너무 짧은 글", {w.rule for w in report.warnings})
+        self.assertTrue(report.passed)  # warning이라 막지는 않는다
+
+    def test_one_line_photo_text_warns(self):
+        blocks = good_post()
+        blocks[5] = text("웨이팅이 있었어요")  # 사진 묶음 뒤 첫 글 (블록 5)
+        result = {r.rule: r for r in check_post(blocks).results}["사진 설명 충분"]
+        self.assertFalse(result.passed)
+        self.assertIn("[5]", result.detail)
+
+    def test_dot_lines_do_not_count_as_photo_text(self):
+        blocks = good_post()
+        blocks[5] = text("웨이팅이 있었어요", ".")
+        self.assertIn("사진 설명 충분", failed_rules(check_post(blocks)))
 
 
 class TestSingleRules(unittest.TestCase):

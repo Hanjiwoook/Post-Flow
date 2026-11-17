@@ -33,7 +33,7 @@ class WriterBlock(BaseModel):
 class PhotoNote(BaseModel):
     index: int
     category: str = Field(description="EXTERIOR, INTERIOR, MENU, FOOD_ITEM:메뉴명, RECEIPT 중 하나")
-    description: str = Field(description="사진에 보이는 그대로의 짧은 설명")
+    description: str = Field(description="사진에 보이는 그대로의 짧은 설명. 사진 속 글자(간판, 가격, 안내문)는 따옴표로 옮겨 적는다")
 
 
 class ExcludedNote(BaseModel):
@@ -53,7 +53,11 @@ class WrittenPost(BaseModel):
 # 사진 분류/설명을 함께 받기 위한 추가 지시 (편집 화면과 이후 수정 기능에서 쓴다)
 PHOTO_REPORT_RULE = """\
 [사진 기록]
-- photos에는 쓴 사진과 뺀 사진을 모두 넣는다. 사진마다 번호, 분류(EXTERIOR, INTERIOR, MENU, FOOD_ITEM:메뉴명, RECEIPT 중 하나), 보이는 그대로의 짧은 설명을 적는다."""
+- photos에는 쓴 사진과 뺀 사진을 모두 넣는다. 사진마다 번호, 분류(EXTERIOR, INTERIOR, MENU, FOOD_ITEM:메뉴명, RECEIPT 중 하나), 보이는 그대로의 짧은 설명을 적는다.
+- 사진 속 글자(간판, 입간판 문구, 메뉴 이름과 가격, 영업 안내문)는 설명에 따옴표로 그대로 옮겨 적는다. 예: 메뉴판 "김치찌개 9,000원", 입간판 "SINCE 2015"
+  글에 쓴 가격과 문구는 반드시 해당 사진 설명에도 있어야 한다. 나중에 검수할 때 사진 대신 이 설명으로 사실을 확인한다.
+- 흐려서 읽을 수 없는 글자는 지어내지 말고 `(글자 흐림)`이라고 적는다.
+- 영수증은 메뉴 이름, 가격, 합계만 적는다. 카드번호, 승인번호, 사업자번호, 전화번호는 적지 않는다."""
 
 UNREPORTED_REASON = "AI가 사용 여부를 밝히지 않은 사진이에요"
 RECEIPT_REASON = "영수증 사진은 개인정보(카드번호 등) 때문에 올리지 않아요"

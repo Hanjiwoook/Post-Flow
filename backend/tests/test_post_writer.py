@@ -145,6 +145,11 @@ class TestWritePost(unittest.IsolatedAsyncioTestCase):
         self.assertIn(PHOTO_REPORT_RULE, prompt)
         self.assertIn("첨부한 사진 0번을 직접 보고 판단", prompt)
 
+    def test_photo_rule_transcribes_text_but_not_card_numbers(self):
+        # 사진 설명에 글자가 없어서 검수가 맞는 가격을 '확인 필요'로 봤다 (11/13, 11/17)
+        self.assertIn("따옴표로 그대로 옮겨 적는다", PHOTO_REPORT_RULE)
+        self.assertIn("카드번호, 승인번호", PHOTO_REPORT_RULE)  # 영수증 개인정보는 옮기지 않는다
+
     async def test_image_hints_and_paid_flag_reach_prompt(self):
         fake = FakeLLM()
         facts = {"place_name": "테스트식당", "image_hints": ["", "국물 짰음"], "paid_by_self": "true"}

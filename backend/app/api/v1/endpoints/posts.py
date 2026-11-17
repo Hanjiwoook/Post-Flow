@@ -12,6 +12,8 @@ from ....services.llm_client import LLMError
 from ....services.post_writer import write_post
 from ....services.post_reviewer import review_post
 from ....schemas.review import ReviewRequest, ReviewResult
+from ....services.post_reviser import revise_post
+from ....schemas.revise import ReviseRequest, ReviseResult
 from ....services.automation.naver_v2 import naver_automation_v2
 from ....services.automation.tistory import tistory_automation
 from ....schemas.post import AnalyzeResult, PostPublishRequest, JobResponse, PostResponse, RefineRequest, PatchRequest
@@ -118,6 +120,21 @@ async def review_draft(request: ReviewRequest):
         return CommonResponse(success=False, message=str(e), error="LLM_ERROR")
     except Exception as e:
         return CommonResponse(success=False, message="검수 중 오류가 발생했습니다.", error=str(e))
+
+@router.post("/revise", response_model=CommonResponse[ReviseResult])
+async def revise_draft(request: ReviseRequest):
+    """
+    검수 반영 고쳐쓰기: 초안 + 검수 결과 + 사용자 답변 → 고친 글.
+    text 블록만 바뀌고 사진·지도·인용구 블록은 그대로다. 요청 1번에 AI 호출 1번.
+    """
+    try:
+        result = await revise_post(request.title, request.blocks, request.facts, request.images,
+                                   request.writing_notes, request.review, request.answers)
+        return CommonResponse(success=True, message="고쳐쓰기 완료", data=result)
+    except LLMError as e:
+        return CommonResponse(success=False, message=str(e), error="LLM_ERROR")
+    except Exception as e:
+        return CommonResponse(success=False, message="고쳐쓰기 중 오류가 발생했습니다.", error=str(e))
 
 @router.post("/refine", response_model=CommonResponse[AnalyzeResult])
 async def refine_post(

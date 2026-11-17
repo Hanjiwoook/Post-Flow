@@ -5,6 +5,23 @@ from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 from ...core.config import settings
 
+def block_image_indices(block: dict) -> list:
+    """사진 블록의 사진 번호 목록 (예전 형식 image_index도 받는다)."""
+    indices = block.get("image_indices") or []
+    if not indices and block.get("image_index") is not None:
+        indices = [block["image_index"]]
+    return list(indices)
+
+
+def unused_image_indices(blocks: list, image_count: int) -> list:
+    """
+    글의 사진 블록에 없는 사진 번호. 이 사진들은 올리지 않는다.
+    AI가 일부러 뺀 사진(영수증의 카드번호, 흔들린 사진 등)이 여기에 들어간다.
+    """
+    used = {i for b in blocks if b.get("type") == "image" for i in block_image_indices(b)}
+    return [i for i in range(image_count) if i not in used]
+
+
 class NaverBlogAutomationV2:
     def __init__(self):
         self.naver_id = settings.NAVER_ID
@@ -87,15 +104,12 @@ class NaverBlogAutomationV2:
                 body_el.click(force=True); time.sleep(1)
 
                 # 6. Process Blocks
-                used_image_indices = set()
+                failed_image_indices = []
 
                 for i, block in enumerate(normalized_blocks):
                     b_type = block.get("type", "text")
                     b_value = block.get("value") or ""
-                    # 다중 이미지 인덱스 지원
-                    indices = block.get("image_indices", [])
-                    if not indices and block.get("image_index") is not None:
-                        indices = [block["image_index"]]
+                    indices = block_image_indices(block)
                     
                     print(f"🧩 [{i+1}/{len(normalized_blocks)}] Block: {b_type}")
 
@@ -132,7 +146,6 @@ class NaverBlogAutomationV2:
                             print(f"   ⏳ Waiting for upload to complete (10s + alpha)...")
                             time.sleep(10 + (len(paths) * 2)) 
                             
-                            for idx in indices: used_image_indices.add(idx)
                             
                             # Focus Fix 및 섹션 간격 추가
                             body_el.click(force=True)
@@ -142,7 +155,8 @@ class NaverBlogAutomationV2:
                                 page.keyboard.press("Enter")
                                 time.sleep(0.2)
                         except Exception as e:
-                            print(f"   ⚠️ Image Error: {e}")
+                            failed_image_indices.extend(indices)
+                            print(f"   ⚠️ 사진 {indices} 업로드 실패: {e}")
 
                     elif b_type == "quote" and b_value:
                         frame.locator("button[data-name='quotation']").first.click(force=True)
@@ -164,15 +178,14 @@ class NaverBlogAutomationV2:
                         page.keyboard.press("ArrowDown")
                         page.keyboard.press("Enter")
 
-                # 7. Safety Net: 누락 사진 처리
-                remaining = [image_paths[idx] for idx in range(len(image_paths)) if idx not in used_image_indices]
-                if remaining:
-                    print(f"   🛡️ Safety Net: {len(remaining)} images")
-                    page.keyboard.press("Control+End"); page.keyboard.press("Enter")
-                    with page.expect_file_chooser(timeout=60000) as fc_info:
-                        frame.locator("button[data-name='image']").first.click(force=True)
-                    fc_info.value.set_files(remaining)
-                    time.sleep(len(remaining) * 8)
+                # 7. 안 쓴 사진은 올리지 않는다 (2026-11-17)
+                # 예전에는 블록에 없는 사진을 글 끝에 모두 올렸는데, AI가 일부러 뺀 영수증 사진까지 올라갔다.
+                # 빠뜨린 사진은 글쓰기 단계(sanitize_images)가 '뺀 사진'으로 보고하고 앱에서 다시 넣는다.
+                skipped = unused_image_indices(normalized_blocks, len(image_paths))
+                if skipped:
+                    print(f"   🚫 글에 없는 사진 {skipped}은 올리지 않았습니다")
+                if failed_image_indices:
+                    print(f"   ⚠️ 업로드에 실패한 사진 {failed_image_indices}: 임시저장 글에서 직접 확인해 주세요")
 
                 # 8. Align Center
                 body_el.click(force=True); time.sleep(1)

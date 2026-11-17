@@ -82,7 +82,7 @@ class TestOldAiPost(unittest.TestCase):
         self.assertFalse(report.passed)
         self.assertTrue({
             "도입부 순서", "섹션 제목 없음", "구분선 없음", "해시태그·별점 기호 없음",
-            "사진 묶음 1~3장", "과장 표현 없음", "맺음말 앞 '.' 줄",
+            "과장 표현 없음", "맺음말 앞 '.' 줄",
         } <= failed_rules(report), report.summary())
 
     def test_ai_phrases_warn(self):
@@ -119,6 +119,22 @@ class TestLengthRules(unittest.TestCase):
         blocks = good_post()
         blocks[5] = text("웨이팅이 있었어요", ".")
         self.assertIn("사진 설명 충분", failed_rules(check_post(blocks)))
+
+
+class TestImageGroups(unittest.TestCase):
+    """2026-11-17: 사진 묶음 장수 제한을 없앴다. AI가 장면에 맞게 묶는다."""
+
+    def test_big_group_is_allowed(self):
+        blocks = good_post()
+        blocks[4] = images(6)
+        report = check_post(blocks)
+        self.assertTrue(report.passed, report.summary())
+        self.assertNotIn("2장 묶음 위주", {r.rule for r in report.results})
+
+    def test_empty_group_is_error(self):
+        blocks = good_post()
+        blocks[4] = {"type": "image", "image_indices": []}
+        self.assertIn("빈 사진 묶음 없음", {r.rule for r in check_post(blocks).errors})
 
 
 class TestSingleRules(unittest.TestCase):

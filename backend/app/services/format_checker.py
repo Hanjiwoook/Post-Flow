@@ -10,7 +10,7 @@
 기준 숫자는 2026-11-13에 원본 맛집 글 5편을 측정해서 정했다.
   - 길이는 상한을 두지 않는다 (2026-11-17 결정: 틀만 따르고, 정보가 많으면 길어도 된다).
     대신 너무 짧은 글과 1줄짜리 사진 설명만 warning으로 알려 준다. 원본 5편은 공백 제외 571~2,061자.
-  - 사진 묶음은 모두 1~3장, 2장 묶음 비율 52~75%
+  - 사진 묶음 장수도 상한을 두지 않는다 (2026-11-17 결정: AI가 장면에 맞게 묶는다). 원본은 1~3장, 2장 묶음 52~75%.
   - 이모지가 있는 줄 비율 8~19%, 한 줄 최대 3개
 
 입력 블록은 두 형식을 모두 받는다.
@@ -27,8 +27,6 @@ WARNING = "warning"
 
 MIN_TOTAL_CHARS = 500           # 원본 5편 중 가장 짧은 글 571자(공백 제외)보다 조금 낮게
 MIN_PHOTO_TEXT_LINES = 2        # 사진 뒤 설명 글이 1줄로 끝나면 읽는 사람이 얻는 정보가 없다
-MAX_IMAGE_GROUP = 3
-MIN_PAIR_RATIO = 0.40
 MAX_EMOJI_LINE_RATIO = 0.30
 MAX_EMOJI_PER_LINE = 3
 MAX_CONSECUTIVE_IMAGES = 2
@@ -188,18 +186,10 @@ def _check_photo_text_lines(blocks: List[Dict]) -> Optional[CheckResult]:
                        else f"사진 뒤 글 {len(pairs)}개 모두 {MIN_PHOTO_TEXT_LINES}줄 이상")
 
 
-def _check_image_group_size(counts: List[int]) -> CheckResult:
-    bad = [c for c in counts if not 1 <= c <= MAX_IMAGE_GROUP]
-    return CheckResult("사진 묶음 1~3장", ERROR, not bad,
-                       f"벗어난 묶음 {bad}" if bad else f"묶음 {len(counts)}개 모두 1~3장")
-
-
-def _check_image_pair_ratio(counts: List[int]) -> Optional[CheckResult]:
-    if not counts:
-        return None
-    ratio = sum(c == 2 for c in counts) / len(counts)
-    return CheckResult("2장 묶음 위주", WARNING, ratio >= MIN_PAIR_RATIO,
-                       f"2장 묶음 {ratio:.0%} (기준 {MIN_PAIR_RATIO:.0%} 이상)")
+def _check_no_empty_image_group(counts: List[int]) -> CheckResult:
+    empty = sum(c == 0 for c in counts)
+    return CheckResult("빈 사진 묶음 없음", ERROR, empty == 0,
+                       f"사진이 없는 사진 블록 {empty}개" if empty else f"사진 묶음 {len(counts)}개 모두 사진 있음")
 
 
 def _check_image_then_text(blocks: List[Dict]) -> CheckResult:
@@ -328,8 +318,7 @@ def check_post(blocks: List[Any], title: Optional[str] = None, sponsored: bool =
         _check_no_hashtags_or_stars(lines),
         _check_min_length(text),
         _check_photo_text_lines(blocks),
-        _check_image_group_size(image_counts),
-        _check_image_pair_ratio(image_counts),
+        _check_no_empty_image_group(image_counts),
         _check_image_then_text(blocks),
         _check_emoji(lines),
         _check_period_endings(lines),

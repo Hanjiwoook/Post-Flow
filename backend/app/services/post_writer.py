@@ -27,7 +27,7 @@ class WriterBlock(BaseModel):
     type: Literal["text", "quote", "map", "image"]
     value: Optional[str] = Field(None, description="text/quote의 내용, map의 가게 이름. 줄바꿈은 \\n")
     style: Optional[str] = Field(None, description="quote일 때 default(가게 이름) 또는 quotation_line(가게 정보)")
-    image_indices: List[int] = Field(default_factory=list, description="image일 때 사진 번호 목록 (1~3장)")
+    image_indices: List[int] = Field(default_factory=list, description="image일 때 사진 번호 목록 (한 장면의 사진들, 장수 제한 없음)")
 
 
 class PhotoNote(BaseModel):

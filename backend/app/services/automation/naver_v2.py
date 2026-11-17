@@ -5,6 +5,9 @@ from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 from ...core.config import settings
 
+# 디버그 파일(스크린샷, 편집기 HTML)을 남길 곳: backend/debug_naver_*  (.gitignore의 backend/debug_* 에 해당)
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 def block_image_indices(block: dict) -> list:
     """사진 블록의 사진 번호 목록 (예전 형식 image_index도 받는다)."""
     indices = block.get("image_indices") or []
@@ -27,6 +30,19 @@ class NaverBlogAutomationV2:
         self.naver_id = settings.NAVER_ID
         self.naver_pw = settings.NAVER_PW
         self.naver_blog_id = settings.NAVER_BLOG_ID or "ohuks_life"
+
+    def _snap(self, page, name: str, frame=None):
+        """어디서 막혔는지 볼 수 있게 화면(과 편집기 HTML)을 남긴다. 실패해도 발행 흐름은 멈추지 않는다."""
+        stamp = time.strftime("%H%M%S")
+        base = os.path.join(BACKEND_DIR, f"debug_naver_{stamp}_{name}")
+        try:
+            page.screenshot(path=base + ".png", full_page=True)
+            if frame is not None:
+                with open(base + ".html", "w", encoding="utf-8") as f:
+                    f.write(frame.content())
+            print(f"   📷 디버그 저장: {os.path.basename(base)}")
+        except Exception as e:
+            print(f"   ⚠️ 디버그 저장 실패: {e}")
 
     def safe_hide_overlays(self, frame):
         """도움말 및 마스크 강제 제거"""
@@ -76,8 +92,21 @@ class NaverBlogAutomationV2:
                 page.goto("https://nid.naver.com/nidlogin.login")
                 page.click("#id"); pyperclip.copy(self.naver_id); page.keyboard.press("Control+v")
                 page.click("#pw"); pyperclip.copy(self.naver_pw); page.keyboard.press("Control+v")
-                page.click("#log\.login")
-                time.sleep(3)
+                pyperclip.copy("")  # 비밀번호가 클립보드에 남지 않게 지운다
+                # 2026-11 로그인 화면 변경: #log.login → loginBtn_column / loginBtn_row (배치에 따라 하나만 보인다)
+                login_btn = page.locator("button[data-nlog-area='login.loginbtn']:visible").first
+                if login_btn.count():
+                    login_btn.click()
+                else:
+                    page.keyboard.press("Enter")
+                # 로그인 페이지를 벗어날 때까지 기다린다. 보안 확인(캡차)이 나오면 사람이 풀 시간을 준다.
+                print("로그인 확인 중... (보안 확인이 나오면 창에서 직접 풀어 주세요, 최대 2분)")
+                try:
+                    page.wait_for_url(lambda url: "nidlogin" not in url, timeout=120000)
+                except Exception:
+                    print("❌ 로그인하지 못했습니다 (2분 안에 로그인 페이지를 벗어나지 못함)")
+                    self._snap(page, "login_fail")
+                    return False
 
                 # 2. Access Editor
                 page.goto(f"https://blog.naver.com/{self.naver_blog_id}?Redirect=Write&")
@@ -157,6 +186,7 @@ class NaverBlogAutomationV2:
                         except Exception as e:
                             failed_image_indices.extend(indices)
                             print(f"   ⚠️ 사진 {indices} 업로드 실패: {e}")
+                            self._snap(page, f"image_fail_{i}", frame)
 
                     elif b_type == "quote" and b_value:
                         frame.locator("button[data-name='quotation']").first.click(force=True)
@@ -198,6 +228,7 @@ class NaverBlogAutomationV2:
                 time.sleep(2); page.keyboard.press("ArrowDown") 
 
                 # 9. Save
+                self._snap(page, "before_save", frame)  # 저장 직전 상태 (편집기 구조 확인용)
                 page.evaluate("window.scrollTo(0, 0)"); time.sleep(3)
                 save_btn = frame.locator("button:has-text('저장'), .save_btn__bzc5B").first
                 if save_btn.is_visible():
@@ -205,10 +236,14 @@ class NaverBlogAutomationV2:
                     print("✅ Mission Accomplished!")
                     time.sleep(5)
                     return True
+                print("❌ 저장 버튼을 찾지 못했습니다")
+                self._snap(page, "no_save_button", frame)
                 return False
 
             except Exception as e:
-                print(f"❌ V2 Error: {e}"); return False
+                print(f"❌ V2 Error: {e}")
+                self._snap(page, "error", locals().get("frame"))
+                return False
             finally:
                 time.sleep(2); browser.close()
 

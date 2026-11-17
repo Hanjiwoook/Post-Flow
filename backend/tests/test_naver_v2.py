@@ -5,7 +5,7 @@
 """
 import unittest
 
-from app.services.automation.naver_v2 import block_image_indices, unused_image_indices
+from app.services.automation.naver_v2 import block_image_indices, pick_place_result, unused_image_indices
 
 BLOCKS = [
     {"type": "text", "value": "안녕하세요"},
@@ -28,6 +28,24 @@ class TestImageSelection(unittest.TestCase):
 
     def test_all_used(self):
         self.assertEqual(unused_image_indices(BLOCKS[1:2], 2), [])
+
+
+
+class TestPickPlace(unittest.TestCase):
+    RESULTS = ["테스트라멘 강남점 서울 강남구 테헤란로 1",
+               "테스트라멘 구로점 서울 구로구 연동로 9 1층",
+               "테스트라멘 부산점 부산 해운대구"]
+
+    def test_picks_branch_matching_address(self):
+        self.assertEqual(pick_place_result(self.RESULTS, "서울 구로구 연동로 9 테스트빌딩 1층"), 1)
+
+    def test_city_word_alone_does_not_decide(self):
+        # '서울'(시·도)만 겹치는 건 단서로 쓰지 않는다 → 첫 번째
+        self.assertEqual(pick_place_result(self.RESULTS[:1] + self.RESULTS[2:], "서울특별시"), 0)
+
+    def test_no_address_or_no_results(self):
+        self.assertEqual(pick_place_result(self.RESULTS, ""), 0)
+        self.assertEqual(pick_place_result([], "서울 구로구"), -1)
 
 
 if __name__ == "__main__":

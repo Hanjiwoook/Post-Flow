@@ -59,6 +59,8 @@ class TestWriterPrompt(unittest.TestCase):
         # 2026-11-17 결정: 틀만 따르고 줄 길이·분량 상한은 두지 않는다
         self.assertIn("한 호흡(의미 단위)마다 줄을 바꿔", self.prompt)
         self.assertIn("글 전체 길이에 상한은 없다", self.prompt)
+        self.assertIn("폰 화면 한 줄에 들어가게", self.prompt)
+        self.assertIn("줄 수를 늘린다", self.prompt)
         for cap in ("10~16자", "3~6줄", "자를 넘기지 않는다"):
             self.assertNotIn(cap, self.prompt)
         for phrase in HYPE_PHRASES:

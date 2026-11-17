@@ -11,7 +11,7 @@ post_writer(/analyze 글쓰기)가 이 지시문을 쓴다.
 """
 from typing import Dict, List, Optional
 
-from .format_checker import AI_PHRASES, HYPE_PHRASES, MIN_PHOTO_TEXT_LINES
+from .format_checker import AI_PHRASES, HYPE_PHRASES, MIN_PHOTO_TEXT_LINES, MOBILE_LINE_LEN
 
 # 가게 정보 인용구(명세서 3절)의 항목 순서와 이모지
 INFO_QUOTE_FIELDS = [
@@ -62,6 +62,8 @@ FORMAT_RULES = f"""\
    - 사진 묶음 뒤에는 그 사진을 설명하는 글이 온다. 사진 묶음을 연달아 두지 않는다.
 4. 글 모양
    - 휴대폰으로 읽는 사람을 생각해서, 한 문장을 한 호흡(의미 단위)마다 줄을 바꿔 여러 줄로 쓴다. 긴 문단으로 이어 쓰지 않고, 두세 단어마다 끊어 리듬이 뚝뚝 끊기게 하지도 않는다.
+   - 한 줄은 폰 화면 한 줄에 들어가게 쓴다. 보통 10~18자 정도에서 끊고, {MOBILE_LINE_LEN}자를 넘길 것 같으면 의미 단위로 나눈다 (폰에서 저절로 꺾이면 일부러 끊은 줄과 섞여 읽기 불편하다).
+     정보가 많을 때는 줄을 길게 쓰지 말고 줄 수를 늘린다.
    - 블록 안에서 화제가 바뀌면 `.` 한 글자만 있는 줄로 띄운다.
    - 사진 뒤 설명 글은 최소 {MIN_PHOTO_TEXT_LINES}줄 이상으로, 맛·식감·양·온도·같이 먹으면 좋은 조합 같은 구체적인 정보를 담는다. 근거(사실 목록, 사진, 사용자 메모)가 많으면 길게 써도 된다. 글 전체 길이에 상한은 없다.
 5. 말투 (사람이 쓴 것처럼 읽히는 리듬)

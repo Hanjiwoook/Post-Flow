@@ -108,6 +108,19 @@ class TestLengthRules(unittest.TestCase):
         self.assertIn("너무 짧은 글", {w.rule for w in report.warnings})
         self.assertTrue(report.passed)  # warning이라 막지는 않는다
 
+    def test_many_long_lines_warn_for_mobile(self):
+        blocks = good_post()
+        blocks[5] = text("가게 앞에 도착하니 벌써 웨이팅이 꽤 길게 있었어요",
+                         "회전이 빨라서 생각보다 금방 들어갈 수 있었어요",
+                         "입구 앞에는 나무 벤치가 두 개 놓여 있었습니다",
+                         "저는 20분 정도 기다렸어요")
+        blocks[7] = text("메뉴는 키오스크로 주문하는 방식이었어요",
+                         "라멘 종류가 생각보다 다양해서 한참 고민했습니다",
+                         "가격도 이 정도면 괜찮은 편이었구요 😋")
+        report = check_post(blocks)
+        self.assertIn("폰에서 꺾이는 줄", {w.rule for w in report.warnings})
+        self.assertTrue(report.passed)  # 참고용이라 막지 않는다
+
     def test_one_line_photo_text_warns(self):
         blocks = good_post()
         blocks[5] = text("웨이팅이 있었어요")  # 사진 묶음 뒤 첫 글 (블록 5)

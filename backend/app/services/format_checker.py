@@ -27,6 +27,10 @@ WARNING = "warning"
 
 MIN_TOTAL_CHARS = 500           # 원본 5편 중 가장 짧은 글 571자(공백 제외)보다 조금 낮게
 MIN_PHOTO_TEXT_LINES = 2        # 사진 뒤 설명 글이 1줄로 끝나면 읽는 사람이 얻는 정보가 없다
+# 폰 화면 한 줄에 한글 약 20자가 들어간다고 보고(추정, 실제 폰 화면으로 확정 예정) 넘는 줄이 많으면 알려 준다.
+# 상한이 아니라 읽기 편한지 보는 참고용 warning이다. 원본 5편은 20자 넘는 줄 3~22%.
+MOBILE_LINE_LEN = 20
+MAX_MOBILE_WRAP_RATIO = 0.30
 MAX_EMOJI_LINE_RATIO = 0.30
 MAX_EMOJI_PER_LINE = 3
 MAX_CONSECUTIVE_IMAGES = 2
@@ -175,6 +179,14 @@ def _check_min_length(text: str) -> CheckResult:
                        f"본문 {chars:,}자, 공백 제외 (기준 {MIN_TOTAL_CHARS}자 이상)")
 
 
+def _check_mobile_wrap(lines: List[str]) -> Optional[CheckResult]:
+    if not lines:
+        return None
+    ratio = sum(len(line) > MOBILE_LINE_LEN for line in lines) / len(lines)
+    return CheckResult("폰에서 꺾이는 줄", WARNING, ratio <= MAX_MOBILE_WRAP_RATIO,
+                       f"{MOBILE_LINE_LEN}자 넘는 줄 {ratio:.0%} (기준 {MAX_MOBILE_WRAP_RATIO:.0%} 이하)")
+
+
 def _check_photo_text_lines(blocks: List[Dict]) -> Optional[CheckResult]:
     pairs = [(i, b) for i, (a, b) in enumerate(zip(blocks, blocks[1:]), start=1)
              if a["type"] == "image" and b["type"] == "text"]
@@ -317,6 +329,7 @@ def check_post(blocks: List[Any], title: Optional[str] = None, sponsored: bool =
         _check_no_divider(blocks),
         _check_no_hashtags_or_stars(lines),
         _check_min_length(text),
+        _check_mobile_wrap(lines),
         _check_photo_text_lines(blocks),
         _check_no_empty_image_group(image_counts),
         _check_image_then_text(blocks),

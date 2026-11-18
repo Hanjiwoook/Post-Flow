@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/post_provider.dart';
+import '../widgets/writing_report_card.dart';
 
 /// 편집 화면의 섹션 카드 하나 (사진 + 글)
 class EditorSection {
@@ -28,6 +29,16 @@ class EditorLayout {
   final List<EditorSection> sections;
   final List<int> unplacedImages;
   const EditorLayout(this.sections, this.unplacedImages);
+}
+
+/// AI가 글에서 뺀 사진의 이유 (/analyze의 excluded_images). 사진 번호 → 이유.
+/// 이유가 없는 사진(예: 편집 중 섹션을 지워서 빠진 사진)은 들어 있지 않다.
+Map<int, String> excludedImageReasons(Map post) {
+  final reasons = <int, String>{};
+  for (final e in (post['excluded_images'] as List? ?? [])) {
+    if (e is Map && e['index'] is int) reasons[e['index'] as int] = '${e['reason'] ?? ''}';
+  }
+  return reasons;
 }
 
 /// 블록 순서대로 섹션을 만든다.
@@ -310,7 +321,10 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
               ],
             ),
           ),
-          if (sectionImages.isNotEmpty)
+          // 뺀 사진: 사진마다 뺀 이유와 [다시 넣기] (6-2, 11/18)
+          if (unplaced)
+            ..._buildUnplacedRows(sectionImages, allSections, provider)
+          else if (sectionImages.isNotEmpty)
             Padding(
               padding: const EdgeInsets.all(8.0),
               child: SizedBox(
@@ -338,9 +352,10 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
               ),
             ),
           if (unplaced)
+            // 11/17부터 봇은 글에 없는 사진을 올리지 않는다 (예전 안내: '글 맨 끝에 올라갑니다'는 틀린 말이 됐다)
             const Padding(
               padding: EdgeInsets.all(12),
-              child: Text("본문 어디에도 배치되지 않은 사진입니다. 사진을 눌러 섹션으로 옮길 수 있고, 그대로 두면 네이버 발행 시 글 맨 끝에 올라갑니다.",
+              child: Text("글에 들어가지 않은 사진이에요. 그대로 두면 네이버에 올라가지 않아요. 넣고 싶은 사진은 [다시 넣기]로 섹션을 고르세요.",
                   style: TextStyle(fontSize: 12, color: Colors.black54)),
             )
           else if (textBlockIndex != null)
@@ -358,6 +373,51 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
         ],
       ),
     );
+  }
+
+  // 뺀 사진 한 장씩: 썸네일(누르면 크게) + 뺀 이유 + [다시 넣기]
+  List<Widget> _buildUnplacedRows(List<int> imageIndices, List<EditorSection> allSections, PostProvider provider) {
+    final reasons = excludedImageReasons(provider.generatedPost ?? {});
+    return imageIndices.map((realIndex) {
+      final path = _imagePath(provider, realIndex);
+      if (path == null) return const SizedBox.shrink();
+      final reason = reasons[realIndex];
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GestureDetector(
+              onTap: () => _showImageDetail(context, path, realIndex, allSections, provider),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.file(File(path), width: 80, height: 80, fit: BoxFit.cover),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("사진 ${realIndex + 1}", style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text(
+                    reason == null || reason.isEmpty ? "뺀 이유가 없어요 (편집 중에 섹션에서 빠진 사진일 수 있어요)" : reason,
+                    style: const TextStyle(fontSize: 13, height: 1.4),
+                  ),
+                  TextButton.icon(
+                    style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                    onPressed: () => _showMoveMenu(context, realIndex, allSections, provider),
+                    icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+                    label: const Text("다시 넣기"),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList();
   }
 
   void _showPublishConfirmation(PostProvider provider) {
@@ -435,7 +495,6 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     if (post == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     final List<dynamic> blocks = post['blocks'] ?? [];
-    final facts = post['facts'] ?? {};
     final List<dynamic> images = post['images'] ?? [];
     final layout = buildEditorLayout(blocks, images.length);
 
@@ -447,22 +506,9 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
           ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // 정보 카드
-              Card(
-                elevation: 0, color: Colors.indigo[900],
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text("AI 분석 인사이트", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Text(facts['visitor_insight'] ?? "분석된 리뷰 정보가 없습니다.", style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                    ],
-                  ),
-                ),
-              ),
+              // 작성 리포트: 형식 검사, '확인 필요' 메모, 비용 (6-1, 11/18)
+              // 예전 'AI 분석 인사이트' 카드는 입력한 리뷰 요약을 다시 보여 줄 뿐이었다.
+              WritingReportCard(post: post),
               const SizedBox(height: 20),
               TextField(controller: _titleController, decoration: const InputDecoration(hintText: '제목', border: InputBorder.none), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               const Divider(height: 30),
@@ -474,7 +520,7 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
 
               // 어떤 섹션에도 들어가지 않은 사진 (조용히 사라지지 않도록 따로 보여줌)
               _buildSectionItem(
-                "⚠️ 배치 안 된 사진", "", null, null, layout.unplacedImages, layout.sections, provider,
+                "🚫 글에서 뺀 사진", "", null, null, layout.unplacedImages, layout.sections, provider,
                 unplaced: true,
               ),
               const SizedBox(height: 100),

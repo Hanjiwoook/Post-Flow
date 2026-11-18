@@ -4,6 +4,7 @@ from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 from ...core.config import settings
 from .naver_session import SESSION_PATH, is_login_page
+from .editor_check import check_editor_html
 
 # 디버그 파일(스크린샷, 편집기 HTML)을 남길 곳: backend/debug_naver_*  (.gitignore의 backend/debug_* 에 해당)
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -46,6 +47,9 @@ def pick_place_result(result_texts: list, address: str) -> int:
 class NaverBlogAutomationV2:
     def __init__(self):
         self.naver_blog_id = settings.NAVER_BLOG_ID or "ohuks_life"
+        # 마지막 실행의 저장 전 자가 검사 결과 (빈 목록 = 고칠 것 없음). 문제가 있어도 임시저장은 한다:
+        # 비공개 임시저장이라 손해가 없고, 다시 돌리면 사진 업로드부터 몇 분이 든다 (11/18 결정).
+        self.last_problems: list = []
 
     def _snap(self, page, name: str, frame=None):
         """어디서 막혔는지 볼 수 있게 화면(과 편집기 HTML)을 남긴다. 실패해도 발행 흐름은 멈추지 않는다."""
@@ -178,7 +182,8 @@ class NaverBlogAutomationV2:
     def _execute_publish(self, title: str, blocks: list, image_paths: list[str] = [], images_data: list = [], facts: dict = {},
                          save: bool = True) -> bool:
         print(f"🚀 [V2 인플루언서 콜라주 모드] Starting - Title: {title}")
-        
+        self.last_problems = []
+
         # 데이터 정규화
         normalized_blocks = []
         for b in blocks:
@@ -324,7 +329,23 @@ class NaverBlogAutomationV2:
                 # 예전 테스트 블로그는 블로그 기본 정렬이 가운데라 된 것처럼 보였다. 여자친구 글은 거의 모두 가운데.
                 self._align_all_center(page, frame, body_el)
 
-                # 9. Save
+                # 9. 저장 전 자가 검사 (11/18): 편집기 HTML을 초안 블록과 비교한다.
+                # '저장을 눌렀다'만으로는 성공이 아니었다 (11/17 정렬·글씨 크기가 적용 안 된 것을 손으로 비교해 찾음).
+                try:
+                    problems += check_editor_html(frame.content(), normalized_blocks, len(image_paths))
+                except Exception as e:
+                    problems.append(f"자가 검사를 하지 못했습니다: {e}")
+                self.last_problems = problems
+                if problems:
+                    print("=" * 60)
+                    print(f"⚠️ 저장 전 자가 검사: 고칠 것 {len(problems)}개 (임시저장은 합니다, 폰에서 확인해 주세요)")
+                    for p in problems:
+                        print(f"   - {p}")
+                    print("=" * 60)
+                else:
+                    print("✅ 저장 전 자가 검사 통과: 블록 순서·줄·빈 줄·정렬·글씨 크기·사진·지도 모두 초안과 같습니다")
+
+                # 10. Save
                 self._snap(page, "before_save", frame)  # 저장 직전 상태 (편집기 구조 확인용)
                 if not save:
                     print("🧪 시험 모드: 저장하지 않고 닫습니다 (편집기 HTML은 debug 파일로 남김)")

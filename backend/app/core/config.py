@@ -25,7 +25,8 @@ class Settings:
         # 검토·보강 고쳐쓰기는 Sonnet으로 시작 (11/13 사용자 결정, 비교 결과 충분)
         "reviewer": os.getenv("CLAUDE_MODEL_REVIEWER", "claude-sonnet-5-5"),  # 파워블로거 검토
         "reviser": os.getenv("CLAUDE_MODEL_REVISER", "claude-sonnet-5-5"),   # 검토 반영 고쳐쓰기
-        "summary": os.getenv("CLAUDE_MODEL_SUMMARY", ""),   # 가게 정보 요약
+        # 가게 정보 요약은 지도 글자를 칸에 옮겨 적는 일이라 Haiku로 충분 (11/18 사용자 결정, Opus는 1회 약 $0.07)
+        "summary": os.getenv("CLAUDE_MODEL_SUMMARY", "claude-haiku-5-5"),
         "style": os.getenv("CLAUDE_MODEL_STYLE", ""),     # 스타일 학습
         "refine": os.getenv("CLAUDE_MODEL_REFINE", ""),    # AI 부분 수정
     }

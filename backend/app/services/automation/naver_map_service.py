@@ -32,7 +32,8 @@ class NaverMapService:
                     time.sleep(2)
                 else:
                     print(f"⚠️ [{query}] Link not found. Returning partial info.")
-                    return {"place_name": query, "raw_text": "검색 결과 없음"}
+                    # 예전에는 "검색 결과 없음"을 원문처럼 돌려줘서 /place-info가 성공으로 처리했다 (11/18). 실패는 error로 알린다.
+                    return {"place_name": query, "raw_text": "", "error": f"네이버 지도에서 '{query}'를 찾지 못했습니다. 가게 이름을 확인해 주세요."}
 
                 # 데이터를 담을 그릇
                 scraped_data = {"홈": "", "소식": "", "정보": "", "리뷰": ""}
@@ -59,7 +60,7 @@ class NaverMapService:
 
             except Exception as e:
                 print(f"❌ Map Search Error: {e}")
-                return {"place_name": query, "raw_text": str(e)}
+                return {"place_name": query, "raw_text": "", "error": f"네이버 지도 정보를 가져오지 못했습니다: {e}"}
             finally:
                 browser.close()
 

@@ -44,7 +44,14 @@ def save_login_session(timeout_sec: int = LOGIN_WAIT_SEC) -> bool:
         try:
             while time.time() < deadline:
                 if has_login_cookies(context.cookies()) and not is_login_page(page.url):
-                    context.storage_state(path=SESSION_PATH)
+                    # 로그인 직후 네이버가 여러 페이지로 넘어가는 중에 저장하면 'Execution context was destroyed'
+                    # 에러가 난다 (11/18). 페이지가 다 열릴 때까지 기다리고, 그래도 넘어가는 중이면 다음 바퀴에 다시 한다.
+                    try:
+                        page.wait_for_load_state("load", timeout=10000)
+                        context.storage_state(path=SESSION_PATH)
+                    except Exception:
+                        time.sleep(2)
+                        continue
                     print("✅ 로그인 상태를 저장했습니다. 이제 발행 봇이 이 로그인으로 시작합니다.")
                     return True
                 time.sleep(2)

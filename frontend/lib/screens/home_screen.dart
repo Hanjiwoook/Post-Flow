@@ -44,6 +44,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<String> _amenities = [];
   List<String> _placeVibe = [];
   String _fullContext = "";
+  String _visitorInsight = ""; // 방문자 리뷰 요약 (/place-info). 글쓰기 AI의 사실 목록에 들어간다
 
   @override
   void dispose() {
@@ -143,6 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
           'amenities': _amenities.join(", "),
           'place_vibe': _placeVibe.join(", "),
           'full_context': _fullContext,
+          'visitor_insight': _visitorInsight,
         };
 
         await provider.analyzeImages(_selectedTemplate, initialFacts: initialFacts);
@@ -336,6 +338,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 _amenities = List<String>.from(info['amenities'] ?? []);
                                 _placeVibe = List<String>.from(info['place_vibe'] ?? []);
                                 _fullContext = info['full_context'] ?? "";
+                                _visitorInsight = info['visitor_insight'] ?? "";
                               });
                             } catch (e) {
                               Navigator.pop(context);

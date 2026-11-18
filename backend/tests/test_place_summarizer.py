@@ -10,14 +10,16 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app.services.llm_client import LLMError, LLMResult
-from app.services.place_summarizer import MAX_RAW_CHARS, PlaceInfo, build_place_prompt, summarize_place
+from app.services.place_summarizer import MAX_RAW_CHARS, PlaceInfo, RecentEvent, build_place_prompt, summarize_place
 
 RAW = "--- [홈 정보] ---\n테스트식당\n주소\n서울 어딘가 1층\n전화번호\n010-0000-0000\n저장\n공유"
 
 
 def fake_info():
     return PlaceInfo(address="서울 어딘가 1층", phone="010-0000-0000", business_hours="", parking="",
-                     amenities=["포장", "예약"], owner_intro="", recent_event="",
+                     amenities=["포장", "예약"], owner_intro="",
+                     recent_events=[RecentEvent(text="신메뉴 출시", date="2026.09.24."),
+                                    RecentEvent(text="추석 연휴 정상영업", date="")],
                      place_vibe=["혼밥하기 좋은"], visitor_insight="키오스크로 주문한다는 리뷰가 많다.")
 
 
@@ -77,6 +79,9 @@ class TestPlaceInfoEndpoint(unittest.TestCase):
         self.assertEqual(data["amenities"], ["포장", "예약"])       # 앱은 목록으로 받는다
         self.assertEqual(data["place_vibe"], ["혼밥하기 좋은"])
         self.assertIn("키오스크", data["visitor_insight"])
+        # 소식은 목록으로 보내고, 앱에서 사용자가 고른다
+        self.assertEqual(data["recent_events"], [{"text": "신메뉴 출시", "date": "2026.09.24."},
+                                                 {"text": "추석 연휴 정상영업", "date": ""}])
         self.assertEqual(data["usage"]["model"], "claude-opus-5-5")
 
     def test_place_not_found_is_failure(self):

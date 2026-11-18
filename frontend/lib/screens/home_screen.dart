@@ -40,7 +40,10 @@ class _HomeScreenState extends State<HomeScreen> {
   List<TextEditingController> _imageHintControllers = [];
 
   String _ownerIntro = "";
-  String _recentEvent = "";
+  // 가게 소식 목록 (/place-info). 글에 넣을지는 사용자가 고른다. 기본은 아무것도 넣지 않는다 (11/18)
+  // 지난 추석 영업 안내처럼 지금은 의미 없는 소식이 글에 들어가는 것을 막기 위해서다.
+  List<Map<String, String>> _recentEvents = [];
+  final Set<int> _checkedEvents = {};
   List<String> _amenities = [];
   List<String> _placeVibe = [];
   String _fullContext = "";
@@ -140,7 +143,7 @@ class _HomeScreenState extends State<HomeScreen> {
           'sponsored': _sponsored,
           'sponsor_detail': _sponsored ? _sponsorDetailController.text : '',
           'owner_intro': _ownerIntro,
-          'recent_event': _recentEvent,
+          'recent_event': (_checkedEvents.toList()..sort()).map((i) => _recentEvents[i]['text']).join(' / '),
           'amenities': _amenities.join(", "),
           'place_vibe': _placeVibe.join(", "),
           'full_context': _fullContext,
@@ -334,7 +337,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 if (info['parking'] != null) _parkingController.text = info['parking'];
                                 if (info['place_name'] != null) _placeNameController.text = info['place_name'];
                                 _ownerIntro = info['owner_intro'] ?? "";
-                                _recentEvent = info['recent_event'] ?? "";
+                                _recentEvents = (info['recent_events'] as List? ?? [])
+                                    .map((e) => {'text': '${e['text'] ?? ''}', 'date': '${e['date'] ?? ''}'})
+                                    .where((e) => e['text']!.isNotEmpty)
+                                    .toList();
+                                _checkedEvents.clear();
                                 _amenities = List<String>.from(info['amenities'] ?? []);
                                 _placeVibe = List<String>.from(info['place_vibe'] ?? []);
                                 _fullContext = info['full_context'] ?? "";
@@ -368,7 +375,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             
-            if (_ownerIntro.isNotEmpty || _recentEvent != "없음" && _recentEvent.isNotEmpty) ...[
+            if (_ownerIntro.isNotEmpty) ...[
               const SizedBox(height: 20),
               Container(
                 padding: const EdgeInsets.all(16),
@@ -378,9 +385,37 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     const Row(children: [Icon(Icons.lightbulb, color: Colors.amber, size: 20), SizedBox(width: 8), Text("AI 인사이트 브리핑", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]),
                     const SizedBox(height: 12),
-                    if (_ownerIntro.isNotEmpty) Text(_ownerIntro, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.5)),
-                    if (_recentEvent != "없음" && _recentEvent.isNotEmpty) Text(_recentEvent, style: const TextStyle(color: Colors.white, fontSize: 13)),
+                    Text(_ownerIntro, style: const TextStyle(color: Colors.white, fontSize: 13, height: 1.5)),
                   ],
+                ),
+              ),
+            ],
+
+            if (_recentEvents.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey[300]!)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+                        child: Text("📢 최근 소식 (글에 넣을 것만 체크하세요)", style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                      for (var i = 0; i < _recentEvents.length; i++)
+                        CheckboxListTile(
+                          dense: true,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          value: _checkedEvents.contains(i),
+                          onChanged: (v) => setState(() => v == true ? _checkedEvents.add(i) : _checkedEvents.remove(i)),
+                          title: Text(_recentEvents[i]['text']!, style: const TextStyle(fontSize: 13)),
+                          subtitle: _recentEvents[i]['date']!.isEmpty ? const Text("날짜 없음") : Text(_recentEvents[i]['date']!),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ],

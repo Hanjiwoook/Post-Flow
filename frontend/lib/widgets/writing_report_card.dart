@@ -16,6 +16,7 @@ class WritingReport {
   final List<String> needsCheck; // 사용자가 꼭 봐야 하는 메모 ('확인 필요')
   final List<String> otherNotes; // 나머지 작성 메모
   final String? costText; // 예: "claude-opus-5-5 · \$0.37 · 입력 28,559 / 출력 12,670 토큰"
+  final List<String> changeNotes; // 고쳐쓰기(6-3)에서 무엇을 왜 바꿨는지
 
   const WritingReport({
     required this.ruleCount,
@@ -23,6 +24,7 @@ class WritingReport {
     required this.needsCheck,
     required this.otherNotes,
     required this.costText,
+    this.changeNotes = const [],
   });
 
   bool get hasFormatCheck => ruleCount > 0;
@@ -64,6 +66,7 @@ WritingReport buildWritingReport(Map<String, dynamic> post) {
     needsCheck: needsCheck,
     otherNotes: otherNotes,
     costText: costText,
+    changeNotes: (post['change_notes'] as List? ?? []).map((n) => '$n').toList(),
   );
 }
 
@@ -120,6 +123,19 @@ class WritingReportCard extends StatelessWidget {
                 ),
               ),
             ],
+
+            // 고쳐쓰기에서 바꾼 것 (펼쳐 둠)
+            if (report.changeNotes.isNotEmpty)
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  initiallyExpanded: true,
+                  tilePadding: EdgeInsets.zero,
+                  title: Text("✍️ 고쳐쓰기에서 바꾼 것 ${report.changeNotes.length}개",
+                      style: const TextStyle(fontSize: 13, color: Colors.green, fontWeight: FontWeight.bold)),
+                  children: report.changeNotes.map((n) => _line(Icons.check, Colors.green, n)).toList(),
+                ),
+              ),
 
             // 3. 나머지 작성 메모 (접어 둠)
             if (report.otherNotes.isNotEmpty)

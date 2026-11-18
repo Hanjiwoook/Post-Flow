@@ -8,10 +8,20 @@ class PostProvider with ChangeNotifier {
   bool _isRefining = false;
   Map<String, dynamic>? _generatedPost;
 
+  // 검수(6-3): 결과와 고친 흔적은 generatedPost 안에 둔다 ('review', 'revised', 'edited_blocks', 'change_notes').
+  // 새 글이나 다른 기록을 불러오면 함께 사라져서, 다른 글의 검수가 섞이지 않는다.
+  bool _isReviewing = false;
+  bool _isRevising = false;
+
   List<XFile> get selectedImages => _selectedImages;
   bool get isLoading => _isLoading;
   bool get isRefining => _isRefining;
+  bool get isReviewing => _isReviewing;
+  bool get isRevising => _isRevising;
   Map<String, dynamic>? get generatedPost => _generatedPost;
+  Map<String, dynamic>? get review => _generatedPost?['review'] as Map<String, dynamic>?;
+  // 고쳐쓰기는 글 하나에 한 번만 (11/13 결정: 검토 후 고쳐쓰기 최대 1회)
+  bool get hasRevised => _generatedPost?['revised'] == true;
 
   void setImages(List<XFile> images) {
     _selectedImages = images;
@@ -296,6 +306,68 @@ class PostProvider with ChangeNotifier {
       _isRefining = false;
       notifyListeners();
     }
+  }
+
+  /// 지금 글(편집 화면에서 고친 내용 포함)을 검수 받는다. 실패하면 Exception을 다시 던진다.
+  Future<void> requestReview() async {
+    final post = _generatedPost;
+    if (post == null) return;
+    _isReviewing = true;
+    notifyListeners();
+    try {
+      final result = await ApiService.reviewPost(
+        post['title'] ?? '',
+        List<dynamic>.from(post['blocks'] ?? []),
+        Map<String, dynamic>.from(post['facts'] ?? {}),
+        images: List<dynamic>.from(post['images'] ?? []),
+        writingNotes: List<dynamic>.from(post['writing_notes'] ?? []),
+      );
+      post['review'] = result;
+    } finally {
+      _isReviewing = false;
+      notifyListeners();
+    }
+  }
+
+  /// 검수 결과 + 사용자 답변으로 고쳐 쓴다. 실패하면 Exception을 다시 던진다.
+  Future<void> requestRevision(List<Map<String, String>> answers) async {
+    final post = _generatedPost;
+    final currentReview = review;
+    if (post == null || currentReview == null || hasRevised) return;
+    _isRevising = true;
+    notifyListeners();
+    try {
+      final result = await ApiService.revisePost(
+        post['title'] ?? '',
+        List<dynamic>.from(post['blocks'] ?? []),
+        Map<String, dynamic>.from(post['facts'] ?? {}),
+        currentReview,
+        answers,
+        images: List<dynamic>.from(post['images'] ?? []),
+        writingNotes: List<dynamic>.from(post['writing_notes'] ?? []),
+      );
+      applyRevisionResult(post, result);
+    } finally {
+      _isRevising = false;
+      notifyListeners();
+    }
+  }
+
+  /// /revise 결과를 글에 반영한다. 서버는 글(text) 블록만 고치고 블록 수·순서는 그대로 돌려준다.
+  /// 화면과 나눠 둔 이유: 반영 규칙을 flutter test로 확인하기 위해서다.
+  static void applyRevisionResult(Map<String, dynamic> post, Map<String, dynamic> result) {
+    final oldBlocks = List<dynamic>.from(post['blocks'] ?? []);
+    final newBlocks = List<dynamic>.from(result['blocks'] ?? []);
+    // 블록 수가 다르면 사진 위치가 어긋나므로 반영하지 않는다 (서버가 지키는 규칙이지만 한 번 더 막는다)
+    if (newBlocks.length != oldBlocks.length) {
+      throw Exception('고쳐 쓴 글의 블록 수가 달라서 반영하지 않았습니다 (원래 ${oldBlocks.length}개, 받은 글 ${newBlocks.length}개)');
+    }
+    post['title'] = result['title'] ?? post['title'];
+    post['blocks'] = newBlocks.map((b) => Map<String, dynamic>.from(b as Map)).toList();
+    if (result['format_check'] != null) post['format_check'] = result['format_check'];
+    post['edited_blocks'] = List<int>.from(result['edited_blocks'] ?? []);
+    post['change_notes'] = List<String>.from((result['change_notes'] ?? []).map((n) => '$n'));
+    post['revised'] = true;
   }
 
   Map<String, List<Map<String, dynamic>>> getImagesByCategory() {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/post_provider.dart';
 import '../widgets/writing_report_card.dart';
+import 'review_screen.dart';
 
 /// 편집 화면의 섹션 카드 하나 (사진 + 글)
 class EditorSection {
@@ -268,9 +269,16 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
   Widget _buildSectionItem(String sectionTitle, String sectionText, int? textBlockIndex, int? imageBlockIndex, List<int> sectionImages, List<EditorSection> allSections, PostProvider provider, {bool unplaced = false}) {
     if (sectionText.isEmpty && sectionImages.isEmpty) return const SizedBox.shrink();
 
+    // 고쳐쓰기(6-3)에서 바뀐 글은 초록 테두리로 표시한다
+    final edited = List<dynamic>.from(provider.generatedPost?['edited_blocks'] ?? []);
+    final wasEdited = textBlockIndex != null && edited.contains(textBlockIndex);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: wasEdited ? const BorderSide(color: Colors.green, width: 2) : BorderSide.none,
+      ),
       elevation: 0,
       color: Colors.grey[50],
       child: Column(
@@ -285,6 +293,11 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                 Row(
                   children: [
                     Text(sectionTitle, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 13)),
+                    if (wasEdited)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 8),
+                        child: Text("✍️ 고침", style: TextStyle(fontSize: 11, color: Colors.green, fontWeight: FontWeight.bold)),
+                      ),
                     if (sectionImages.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(left: 8),
@@ -420,6 +433,26 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     }).toList();
   }
 
+  // 검수(6-3): 결과가 없으면 먼저 검수를 받고, 검수 화면을 연다. 고쳐 쓰고 돌아오면 제목 칸도 바꾼다.
+  Future<void> _openReview(PostProvider provider) async {
+    provider.updateTitle(_titleController.text); // 편집 화면에서 고친 제목도 검수 받는다
+    if (provider.review == null) {
+      try {
+        await provider.requestReview();
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('검수 실패: $e')));
+        return;
+      }
+    }
+    if (!mounted) return;
+    final revised = await Navigator.of(context).push<bool>(MaterialPageRoute(builder: (_) => const ReviewScreen()));
+    if (revised == true && mounted) {
+      setState(() => _titleController.text = provider.generatedPost?['title'] ?? '');
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('고쳐 쓴 글을 반영했어요. 바뀐 곳은 초록 테두리로 표시했어요.')));
+    }
+  }
+
   void _showPublishConfirmation(PostProvider provider) {
     provider.publishPost(_titleController.text, "", _selectedPlatforms);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('블로그 발행을 시작합니다...')));
@@ -500,7 +533,14 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(title: const Text('AI 자동화 에디터'), actions: [IconButton(onPressed: () => _showPublishConfirmation(provider), icon: const Icon(Icons.send))]),
+      appBar: AppBar(title: const Text('AI 자동화 에디터'), actions: [
+        TextButton.icon(
+          onPressed: provider.isReviewing ? null : () => _openReview(provider),
+          icon: const Icon(Icons.fact_check_outlined),
+          label: Text(provider.review == null ? '검수 받기' : '검수 결과'),
+        ),
+        IconButton(onPressed: () => _showPublishConfirmation(provider), icon: const Icon(Icons.send)),
+      ]),
       body: Stack(
         children: [
           ListView(
@@ -544,6 +584,22 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
             ),
           ),
           if (provider.isRefining) Container(color: Colors.black26, child: const Center(child: CircularProgressIndicator())),
+          if (provider.isReviewing)
+            Container(
+              color: Colors.black26,
+              child: const Center(
+                child: Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('파워블로거가 검수하는 중이에요 (30초 정도 걸려요)'),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

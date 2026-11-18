@@ -170,4 +170,44 @@ class ApiService {
       throw Exception('서버 에러: ${response.statusCode}');
     }
   }
+
+  // JSON POST 공통: success가 아니면 서버가 보낸 이유로 Exception을 던진다
+  static Future<Map<String, dynamic>> _postJson(String path, Map<String, dynamic> body, String failMessage) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl$path'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+    if (response.statusCode != 200) throw Exception('서버 에러: ${response.statusCode}');
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+    if (decoded['success'] != true) throw Exception(decoded['message'] ?? failMessage);
+    return Map<String, dynamic>.from(decoded['data']);
+  }
+
+  // 7. 파워블로거 검수: 점수, 지적, 빠진 정보, 사용자에게 할 질문 (글은 고치지 않음)
+  static Future<Map<String, dynamic>> reviewPost(String title, List<dynamic> blocks, Map<String, dynamic> facts,
+      {List<dynamic> images = const [], List<dynamic> writingNotes = const []}) {
+    return _postJson('/posts/review', {
+      'title': title,
+      'blocks': blocks,
+      'facts': facts,
+      'images': images,
+      'writing_notes': writingNotes,
+    }, '검수 실패');
+  }
+
+  // 8. 검수 반영 고쳐쓰기: 글 블록만 고친다 (사진·지도·인용구는 그대로)
+  static Future<Map<String, dynamic>> revisePost(String title, List<dynamic> blocks, Map<String, dynamic> facts,
+      Map<String, dynamic> review, List<Map<String, String>> answers,
+      {List<dynamic> images = const [], List<dynamic> writingNotes = const []}) {
+    return _postJson('/posts/revise', {
+      'title': title,
+      'blocks': blocks,
+      'facts': facts,
+      'images': images,
+      'writing_notes': writingNotes,
+      'review': review,
+      'answers': answers,
+    }, '고쳐쓰기 실패');
+  }
 }

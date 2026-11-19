@@ -127,7 +127,7 @@ class LLMClient:
         """
         Claude를 호출해 결과를 output_format(Pydantic 모델)으로 받는다.
 
-        role: 용도 ("writer", "reviewer", "summary", "style", "refine") → 모델 선택
+        role: 용도 ("writer", "reviewer", "reviser", "summary") → 모델 선택
         content: 사용자 메시지 블록 목록 (text_block, image_block)
         effort: "low" | "medium" | "high" ... 생략하면 모델 기본값
         """

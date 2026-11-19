@@ -1,30 +1,27 @@
 """
-Style API - 글쓰기 스타일 학습/관리 엔드포인트
-POST /style/learn: 블로그 크롤링 → 스타일 분석 → 프로필 저장
-GET  /style/profiles: 저장된 프로필 목록
-PUT  /style/profiles/{id}/activate: 활성 프로필 변경
+Style API - 저장된 글쓰기 스타일 프로필 관리
+GET    /style/profiles: 저장된 프로필 목록
+GET    /style/profiles/{id}: 프로필 상세 (예시 글 포함)
+PUT    /style/profiles/{id}/activate: 활성 프로필 변경 (글쓰기가 활성 프로필의 예시 글을 말투 참고로 쓴다)
+DELETE /style/profiles/{id}: 프로필 삭제
+
+11/19 (4-5 Gemini 정리): Gemini로 새 프로필을 만들던 /style/learn과 /style/preview는 지웠다
+(크레딧 소진으로 동작하지 않았고, 지금 프로필로 충분하다). 자세한 사정은 services/writing_style_service.py.
 """
-from fastapi import APIRouter, HTTPException, Depends
-from typing import Optional, List
+from fastapi import APIRouter, Depends
+from typing import Optional
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from ....services.writing_style_service import writing_style_service
 from ....schemas.common import CommonResponse
 from ....db.session import get_db
 from ....db.models import WritingStyleProfile
-from ....core.config import settings
 
 router = APIRouter()
 
 
 # --- Request/Response 스키마 ---
-
-class StyleLearnRequest(BaseModel):
-    blog_id: Optional[str] = None  # 미입력 시 .env의 GF_BLOG_ID 사용
-    profile_name: str = "기본 스타일"
-    max_posts: int = 5
 
 class StyleProfileResponse(BaseModel):
     id: int
@@ -36,51 +33,8 @@ class StyleProfileResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-class StylePreviewRequest(BaseModel):
-    sample_text: str = "오늘 남자친구랑 홍대에 새로 생긴 라멘집에 갔다."
-
 
 # --- API 엔드포인트 ---
-
-@router.post("/learn", response_model=CommonResponse)
-async def learn_writing_style(request: StyleLearnRequest):
-    """
-    블로그 ID를 받아서 크롤링 → 스타일 분석 → DB 저장을 한번에 수행한다.
-    가장 핵심 API. 이거 한 번 호출하면 스타일 학습 완료!
-    """
-    blog_id = request.blog_id or settings.GF_BLOG_ID
-    
-    if not blog_id:
-        return CommonResponse(
-            success=False,
-            message="블로그 ID가 필요합니다. 요청 body에 blog_id를 넣거나 .env에 GF_BLOG_ID를 설정해주세요.",
-            error="MISSING_BLOG_ID"
-        )
-
-    try:
-        result = await writing_style_service.learn_from_blog(
-            blog_id=blog_id,
-            profile_name=request.profile_name,
-            max_posts=request.max_posts
-        )
-        return CommonResponse(
-            success=True,
-            message=f"스타일 학습 완료! {result['crawled_posts_count']}편의 글에서 패턴을 추출했습니다.",
-            data=result
-        )
-    except ValueError as e:
-        return CommonResponse(
-            success=False,
-            message=str(e),
-            error="CRAWLING_FAILED"
-        )
-    except Exception as e:
-        return CommonResponse(
-            success=False,
-            message=f"스타일 학습 중 오류가 발생했습니다: {str(e)}",
-            error="LEARN_ERROR"
-        )
-
 
 @router.get("/profiles", response_model=CommonResponse)
 async def list_profiles(db: Session = Depends(get_db)):
@@ -194,56 +148,3 @@ async def delete_profile(profile_id: int, db: Session = Depends(get_db)):
         success=True,
         message=f"'{name}' 프로필이 삭제되었습니다."
     )
-
-
-@router.post("/preview", response_model=CommonResponse)
-async def preview_style(request: StylePreviewRequest):
-    """
-    현재 활성 스타일로 샘플 문장을 변환해본다. (테스트/미리보기용)
-    """
-    from google import genai
-    from google.genai import types
-
-    active_profile = writing_style_service.get_active_profile()
-    if not active_profile:
-        return CommonResponse(
-            success=False,
-            message="활성화된 스타일 프로필이 없습니다. 먼저 /style/learn으로 학습해주세요.",
-            error="NO_ACTIVE_PROFILE"
-        )
-
-    style_prompt = writing_style_service.generate_style_prompt(
-        active_profile['profile_data'],
-        active_profile['few_shot_examples']
-    )
-
-    prompt = f"""{style_prompt}
-
-[미션] 아래 문장을 위 블로거의 스타일로 블로그 본문 한 문단(3~5문장)으로 확장해줘.
-AI스러운 표현 절대 금지. 위 예시 톤을 정확히 따라할 것.
-
-원본: {request.sample_text}
-"""
-
-    try:
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.7)
-        )
-        return CommonResponse(
-            success=True,
-            message="스타일 미리보기 생성 완료",
-            data={
-                'original': request.sample_text,
-                'styled': response.text,
-                'profile_name': active_profile['name']
-            }
-        )
-    except Exception as e:
-        return CommonResponse(
-            success=False,
-            message=f"미리보기 생성 실패: {str(e)}",
-            error="PREVIEW_ERROR"
-        )

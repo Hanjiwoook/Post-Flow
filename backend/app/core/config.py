@@ -12,10 +12,6 @@ class Settings:
     VERSION: str = "1.0.0"
     API_V1_STR: str = "/api/v1"
     
-    # Gemini AI (Claude로 옮기는 중. 4-5단계에서 제거)
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY")
-    GEMINI_MODEL_NAME: str = "gemini-2.5-flash"
-
     # Claude AI
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     # 용도별 모델. .env에서 CLAUDE_MODEL_WRITER=claude-sonnet-5-5 처럼 바꿀 수 있다.
@@ -27,8 +23,6 @@ class Settings:
         "reviser": os.getenv("CLAUDE_MODEL_REVISER", "claude-sonnet-5-5"),   # 검토 반영 고쳐쓰기
         # 가게 정보 요약은 지도 글자를 칸에 옮겨 적는 일이라 Haiku로 충분 (11/18 사용자 결정, Opus는 1회 약 $0.07)
         "summary": os.getenv("CLAUDE_MODEL_SUMMARY", "claude-haiku-5-5"),
-        "style": os.getenv("CLAUDE_MODEL_STYLE", ""),     # 스타일 학습
-        "refine": os.getenv("CLAUDE_MODEL_REFINE", ""),    # AI 부분 수정
     }
 
     # Branding
@@ -38,7 +32,7 @@ class Settings:
     # 글 마지막 줄 고정 감사 인사 (블로그 원문 문구라 저장소에 적지 않고 .env에 둔다)
     BLOG_CLOSING_PHRASE: str = os.getenv("BLOG_CLOSING_PHRASE", "")
 
-    # Style Learning (크롤링 대상 블로그)
+    # 여자친구 블로그 (크롤러·형식 연구 대상, 스타일 프로필의 출처)
     GF_BLOG_ID: str = os.getenv("GF_BLOG_ID", "")
 
     # Naver Automation

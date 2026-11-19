@@ -7,7 +7,6 @@ import uuid
 import shutil
 from sqlalchemy.orm import Session
 
-from ....services.gemini_service import gemini_service
 from ....services.llm_client import LLMError
 from ....services.post_writer import write_post
 from ....services.post_reviewer import review_post
@@ -16,7 +15,7 @@ from ....services.post_reviser import revise_post
 from ....schemas.revise import ReviseRequest, ReviseResult
 from ....services.automation.naver_v2 import naver_automation_v2
 from ....services.automation.tistory import tistory_automation
-from ....schemas.post import AnalyzeResult, PostPublishRequest, JobResponse, PostResponse, PublishStatus, RefineRequest, PatchRequest
+from ....schemas.post import AnalyzeResult, ContentBlock, PostPublishRequest, JobResponse, PostResponse, PublishStatus, PatchRequest
 from ....schemas.common import CommonResponse
 from ....db.session import get_db
 from ....db.models import Post
@@ -81,7 +80,7 @@ async def analyze_post(
             if i < len(saved_image_paths):
                 img_info.path = saved_image_paths[i]
         
-        # 만약 result.images가 비어있다면 (Gemini가 안 채워줬을 경우 대비)
+        # 만약 result.images가 비어있다면 (AI 결과에 사진 정보가 없을 경우 대비)
         if not result.images and saved_image_paths:
             from ....schemas.post import ImageInfo
             for path in saved_image_paths:
@@ -136,35 +135,21 @@ async def revise_draft(request: ReviseRequest):
     except Exception as e:
         return CommonResponse(success=False, message="고쳐쓰기 중 오류가 발생했습니다.", error=str(e))
 
-@router.post("/refine", response_model=CommonResponse[AnalyzeResult])
-async def refine_post(
-    request: RefineRequest
-):
+PLACE_INFO_MARK = "[매장 위치 & 정보]"
+
+
+def patch_sections(current_blocks: List[ContentBlock], new_facts: dict) -> List[ContentBlock]:
+    """가게 정보를 바꿨을 때 '[매장 위치 & 정보]' 인용구만 새 정보로 갈아 끼운다 (AI 호출 없음).
+
+    11/19: gemini_service.py를 지우면서 여기로 옮겼다 (원래부터 Gemini를 쓰지 않는 글자 바꾸기였다).
+    지금 글쓰기(post_writer)는 이 표시를 쓰지 않아서 새 글에서는 바뀌는 블록이 없다.
+    앱에서도 이 API를 부르는 화면(_showEditInfoModal)이 쓰이지 않는다 → 0단계 '정리'에서 함께 정리할 것.
     """
-    수정된 팩트 정보 및 사용자 요청사항을 바탕으로 본문 내용을 재구성함
-    """
-    try:
-        result = await gemini_service.refine_content(
-            request.title,
-            request.content,
-            request.blocks,  # 현재 본문 블록 전달 (부분 수정용)
-            request.facts,
-            request.style,
-            request.images, # 이미지 데이터 전달 추가
-            request.instruction,
-            request.template_name
-        )
-        return CommonResponse(
-            success=True,
-            message="본문 재구성 성공",
-            data=result
-        )
-    except Exception as e:
-        return CommonResponse(
-            success=False,
-            message="본문 재구성 중 오류가 발생했습니다.",
-            error=str(e)
-        )
+    info = (f"{new_facts.get('place_name', '매장')} / {new_facts.get('address', '주소')} / "
+            f"{new_facts.get('business_hours', '시간')} / {new_facts.get('phone', '번호')} / {new_facts.get('parking', '주차')}")
+    return [ContentBlock(type="quote", value=f"{PLACE_INFO_MARK} {info}") if PLACE_INFO_MARK in (b.value or "") else b
+            for b in current_blocks]
+
 
 @router.post("/patch", response_model=CommonResponse[AnalyzeResult])
 async def patch_post(
@@ -174,10 +159,7 @@ async def patch_post(
     팩트 정보만 바꿨을 때 특정 섹션만 초고속으로 갈아 끼움
     """
     try:
-        updated_blocks = await gemini_service.patch_sections(
-            request.blocks,
-            request.facts
-        )
+        updated_blocks = patch_sections(request.blocks, request.facts)
         # 결과 반환 (AnalyzeResult 형식에 맞춰서)
         return CommonResponse(
             success=True,

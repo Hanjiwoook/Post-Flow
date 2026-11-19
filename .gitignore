@@ -45,3 +45,4 @@ local_runs/
 
 # 네이버 로그인 상태 (로그인된 계정과 같다, 절대 커밋 금지)
 backend/.naver_session.json
+backend/.naver_profile/

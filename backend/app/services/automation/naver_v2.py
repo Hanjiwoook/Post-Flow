@@ -3,7 +3,7 @@ import os
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 from ...core.config import settings
-from .naver_session import SESSION_PATH, is_login_page
+from .naver_session import SAVE_LOGIN_COMMAND, first_page, has_saved_login, is_login_page, open_browser
 from .editor_check import check_editor_html
 
 # 디버그 파일(스크린샷, 편집기 HTML)을 남길 곳: backend/debug_naver_*  (.gitignore의 backend/debug_* 에 해당)
@@ -50,6 +50,9 @@ class NaverBlogAutomationV2:
         # 마지막 실행의 저장 전 자가 검사 결과 (빈 목록 = 고칠 것 없음). 문제가 있어도 임시저장은 한다:
         # 비공개 임시저장이라 손해가 없고, 다시 돌리면 사진 업로드부터 몇 분이 든다 (11/18 결정).
         self.last_problems: list = []
+        # 마지막 실행이 로그인이 없거나 만료돼서 멈췄는지. 이때는 다시 시도해도 똑같이 실패하고,
+        # 로그인 페이지를 여러 번 여는 것이 네이버 보호조치 위험만 키우므로 재시도하지 않는다 (11/19).
+        self.login_required: bool = False
 
     def _snap(self, page, name: str, frame=None):
         """어디서 막혔는지 볼 수 있게 화면(과 편집기 HTML)을 남긴다. 실패해도 발행 흐름은 멈추지 않는다."""
@@ -173,6 +176,10 @@ class NaverBlogAutomationV2:
             success = self._execute_publish(title, blocks, image_paths, images_data, facts, save=save)
             if success:
                 return True
+            if self.login_required:
+                print("❌ [V2 봇] 로그인이 필요해서 다시 시도하지 않습니다. 로그인을 저장한 뒤 다시 발행해 주세요:")
+                print(f"   {SAVE_LOGIN_COMMAND}")
+                return False
             if attempt < max_retries - 1:
                 print(f"⚠️ [V2 봇] 예외 발생. 트래픽 안정화를 위해 10초 대기 후 재시도합니다...")
                 time.sleep(10)
@@ -183,6 +190,7 @@ class NaverBlogAutomationV2:
                          save: bool = True) -> bool:
         print(f"🚀 [V2 인플루언서 콜라주 모드] Starting - Title: {title}")
         self.last_problems = []
+        self.login_required = False
 
         # 데이터 정규화
         normalized_blocks = []
@@ -192,15 +200,15 @@ class NaverBlogAutomationV2:
 
         # 1. 로그인: 비밀번호를 넣지 않고, 사람이 한 번 직접 로그인해 저장한 로그인 상태를 쓴다 (naver_session.py)
         #    매번 자동 로그인하면 네이버 보안 확인에 걸려 글쓰기 화면이 로그인 페이지로 돌아갔다 (2026-11-17).
-        if not os.path.exists(SESSION_PATH):
+        #    11/19: 로그인 저장과 같은 Chrome 프로필로 열어 네이버에 매번 같은 기기로 보이게 한다.
+        if not has_saved_login():
             print("❌ 저장된 네이버 로그인이 없습니다. 먼저 로그인을 저장해 주세요:")
-            print("   cd backend → venv/Scripts/python -m app.services.automation.naver_session")
+            self.login_required = True
             return False
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False)
-            context = browser.new_context(storage_state=SESSION_PATH, viewport={'width': 1280, 'height': 800})
-            page = context.new_page()
+            context = open_browser(p)
+            page = first_page(context)
             Stealth().apply_stealth_sync(page)
 
             try:
@@ -209,7 +217,7 @@ class NaverBlogAutomationV2:
                 page.wait_for_load_state("domcontentloaded")
                 if is_login_page(page.url):
                     print("❌ 저장된 로그인이 만료됐습니다. 다시 로그인을 저장해 주세요:")
-                    print("   cd backend → venv/Scripts/python -m app.services.automation.naver_session")
+                    self.login_required = True
                     return False
                 page.wait_for_selector("iframe#mainFrame", timeout=30000)
                 frame = next(f for f in page.frames if "mainFrame" in f.name)
@@ -355,8 +363,7 @@ class NaverBlogAutomationV2:
                 if save_btn.is_visible():
                     save_btn.click(force=True)
                     print("✅ Mission Accomplished!")
-                    time.sleep(5)
-                    context.storage_state(path=SESSION_PATH)  # 늘어난 로그인 유효기간을 다시 저장
+                    time.sleep(5)  # 프로필 브라우저라 늘어난 로그인 유효기간은 닫을 때 저절로 저장된다
                     return True
                 print("❌ 저장 버튼을 찾지 못했습니다")
                 self._snap(page, "no_save_button", frame)
@@ -367,6 +374,6 @@ class NaverBlogAutomationV2:
                 self._snap(page, "error", locals().get("frame"))
                 return False
             finally:
-                time.sleep(2); browser.close()
+                time.sleep(2); context.close()
 
 naver_automation_v2 = NaverBlogAutomationV2()

@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 from app.services.automation.naver_v2 import (
-    NaverBlogAutomationV2, block_image_indices, pick_place_result, unused_image_indices,
+    COLLAGE_OPTION, COLLAGE_POPUP, NaverBlogAutomationV2, block_image_indices, pick_place_result, unused_image_indices,
 )
 
 BLOCKS = [
@@ -49,6 +49,95 @@ class TestPickPlace(unittest.TestCase):
     def test_no_address_or_no_results(self):
         self.assertEqual(pick_place_result(self.RESULTS, ""), 0)
         self.assertEqual(pick_place_result([], "서울 구로구"), -1)
+
+
+class FakeLocator:
+    def __init__(self, frame, selector):
+        self.frame, self.selector = frame, selector
+
+    @property
+    def first(self):
+        return self
+
+    def wait_for(self, state, timeout):
+        self.frame.events.append(("wait", self.selector, state))
+        if state == "visible" and not self.frame.popup_appears:
+            raise TimeoutError("창이 뜨지 않음")
+        if state == "hidden":
+            self.frame.popup_open = False
+
+    def click(self):
+        self.frame.events.append(("click", self.selector))
+
+    def is_visible(self):
+        return self.frame.popup_open
+
+
+class FakeFrame:
+    """편집기 대신: '사진 첨부 방식' 창이 뜨는지만 흉내 낸다."""
+
+    def __init__(self, popup_appears=True):
+        self.popup_appears = popup_appears
+        self.popup_open = popup_appears
+        self.events = []
+
+    def locator(self, selector):
+        return FakeLocator(self, selector)
+
+
+class TestChooseCollage(unittest.TestCase):
+    def test_clicks_collage_label_not_screen_center(self):
+        frame = FakeFrame()
+        self.assertTrue(NaverBlogAutomationV2()._choose_collage(frame))
+        clicks = [e[1] for e in frame.events if e[0] == "click"]
+        self.assertEqual(clicks, [COLLAGE_OPTION])
+        self.assertIn("label[for='image-type-collage']", COLLAGE_OPTION)
+
+    def test_popup_missing_returns_false(self):
+        frame = FakeFrame(popup_appears=False)
+        self.assertFalse(NaverBlogAutomationV2()._choose_collage(frame))
+        self.assertEqual([e for e in frame.events if e[0] == "click"], [])  # 엉뚱한 곳을 누르지 않는다
+
+    def test_popup_stuck_is_closed(self):
+        # 콜라주를 눌렀는데도 창이 남으면 뒤의 클릭을 막으므로 닫기 버튼을 누른다
+        frame = FakeFrame()
+
+        def stuck(selector):
+            loc = FakeLocator(frame, selector)
+            if selector == COLLAGE_POPUP:
+                def wait_for(state, timeout):
+                    if state == "hidden":
+                        raise TimeoutError("창이 닫히지 않음")
+                loc.wait_for = wait_for
+            return loc
+        frame.locator = stuck
+        self.assertFalse(NaverBlogAutomationV2()._choose_collage(frame))
+        self.assertIn(("click", f"{COLLAGE_POPUP} .se-popup-close-button"), frame.events)
+
+
+class CountingFrame:
+    """업로드가 진행되는 편집기 흉내: evaluate를 부를 때마다 다 올라간 사진 수를 차례로 돌려준다."""
+
+    def __init__(self, counts):
+        self.counts, self.calls = list(counts), 0
+
+    def evaluate(self, js):
+        self.calls += 1
+        return self.counts.pop(0) if len(self.counts) > 1 else self.counts[0]
+
+
+class TestWaitImagesLoaded(unittest.TestCase):
+    def test_waits_until_all_photos_arrive(self):
+        # 11/19: 정해진 시간만 기다리면 4장 중 2장만 들어갔다. 다 들어올 때까지 센다.
+        frame = CountingFrame([0, 1, 2, 4])
+        with mock.patch("app.services.automation.naver_v2.time.sleep"):
+            self.assertEqual(NaverBlogAutomationV2()._wait_images_loaded(frame, 4), 4)
+        self.assertEqual(frame.calls, 4)
+
+    def test_gives_up_after_timeout_and_reports_count(self):
+        frame = CountingFrame([2])
+        with mock.patch("app.services.automation.naver_v2.time.sleep"):
+            self.assertEqual(NaverBlogAutomationV2()._wait_images_loaded(frame, 4, timeout_sec=0), 2)
 
 
 class TestRetry(unittest.TestCase):

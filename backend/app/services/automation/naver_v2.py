@@ -9,6 +9,26 @@ from .editor_check import check_editor_html
 # 디버그 파일(스크린샷, 편집기 HTML)을 남길 곳: backend/debug_naver_*  (.gitignore의 backend/debug_* 에 해당)
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+# 사진 여러 장을 올리면 뜨는 '사진 첨부 방식' 창과 [콜라주] 선택지 (11/19 조사)
+COLLAGE_POPUP = "[data-name='se-popup-image-type']"
+COLLAGE_OPTION = f"{COLLAGE_POPUP} label[for='image-type-collage']"
+# 글의 마지막 사진 블록(한 장 = se-image, 여러 장 = se-imageGroup)을 화면 위쪽에 보이게 두고,
+# 네이버 서버에 다 올라간(주소가 http로 바뀐) 사진 수를 센다.
+# 11/19 조사: 업로드 중에는 img 주소가 data:(내 컴퓨터의 미리보기)이고, 다 올라가면 http 주소로 바뀐다.
+# 편집기는 화면에 보이지 않는 칸의 업로드를 마무리하지 않는다. 3장 이상 콜라주는 윗줄이 화면 위로 밀려
+# 앞의 사진이 data:에 멈춰 있다가 빈칸이 됐다. 보이게 두면 4장이 6초 안에 모두 올라갔다.
+LAST_IMAGE_COUNT_JS = """() => {
+    const comps = document.querySelectorAll('.se-component.se-image, .se-component.se-imageGroup');
+    const last = comps[comps.length - 1];
+    if (!last) return 0;
+    last.scrollIntoView({block: 'start'});
+    return [...last.querySelectorAll('.se-module-image img.se-image-resource')]
+        .filter(img => (img.getAttribute('src') || '').startsWith('http')).length;
+}"""
+UPLOAD_TIMEOUT_SEC = 90  # 사진 묶음 하나가 다 올라가기를 기다리는 최대 시간
+MIN_IMAGE_WAIT_SEC = 10  # 사진 블록 뒤 최소 대기 (+ 장당 2초). 예전부터 쓰던 값이라 그대로 둔다
+
+
 def block_image_indices(block: dict) -> list:
     """사진 블록의 사진 번호 목록 (예전 형식 image_index도 받는다)."""
     indices = block.get("image_indices") or []
@@ -78,6 +98,46 @@ class NaverBlogAutomationV2:
             print(f"   📷 디버그 저장: {os.path.basename(base)}")
         except Exception as e:
             print(f"   ⚠️ 디버그 저장 실패: {e}")
+
+    def _choose_collage(self, frame) -> bool:
+        """여러 장을 올리면 뜨는 '사진 첨부 방식' 창에서 [콜라주]를 고른다. 실패하면 False.
+
+        11/19 조사(debug_naver_probe/collage_*): 선택지는 누르는 즉시 적용되고 확인 버튼은 없다. Escape로는 닫히지 않는다.
+        예전에는 화면 가운데를 두 번 눌렀는데, 1280x800 창에서 가운데가 우연히 [콜라주] 위라서 됐을 뿐이었다.
+        동그라미 버튼(input) 위를 글자(label)가 덮고 있어서 label을 누른다 (사람이 누르는 곳과 같다).
+        """
+        popup = frame.locator(COLLAGE_POPUP).first
+        try:
+            popup.wait_for(state="visible", timeout=15000)
+            frame.locator(COLLAGE_OPTION).first.click()
+            popup.wait_for(state="hidden", timeout=10000)
+            return True
+        except Exception as e:
+            print(f"   ⚠️ 콜라주 선택 실패: {e}")
+            # 창이 남아 있으면 뒤의 클릭을 모두 가로막으므로 닫는다 (이 묶음 사진은 자가 검사가 다시 잡는다)
+            try:
+                if popup.is_visible():
+                    frame.locator(f"{COLLAGE_POPUP} .se-popup-close-button").first.click()
+            except Exception:
+                pass
+            return False
+
+    def _wait_images_loaded(self, frame, expected: int, timeout_sec: float = UPLOAD_TIMEOUT_SEC) -> int:
+        """방금 넣은 사진 블록(글의 마지막 사진 블록)에 사진이 expected장 다 올라갈 때까지 기다린다.
+
+        기다리는 동안 그 블록을 화면에 보이게 둔다 (LAST_IMAGE_COUNT_JS 설명 참고).
+        돌려주는 값: 마지막으로 센 사진 수 (expected보다 작으면 시간 안에 다 들어오지 않은 것).
+        """
+        deadline = time.time() + timeout_sec
+        loaded = 0
+        while True:
+            try:
+                loaded = frame.evaluate(LAST_IMAGE_COUNT_JS) or 0
+            except Exception:
+                pass
+            if loaded >= expected or time.time() >= deadline:
+                return loaded
+            time.sleep(1)
 
     def _insert_quote(self, page, frame, text: str, style: str) -> bool:
         """인용구 스타일을 골라 넣고 글을 쓴다 (글씨 크기 15는 마지막 정렬 단계에서 한 번에). 실패하면 False."""
@@ -293,20 +353,25 @@ class NaverBlogAutomationV2:
                                 frame.locator("button[data-name='image']").first.click(force=True)
                             fc_info.value.set_files(paths)
                             
-                            # 콜라주 팝업 처리 (여러 장일 때)
+                            # 여러 장이면 '사진 첨부 방식' 창에서 콜라주를 고른다 (여자친구 글: 같은 장면 사진을 나란히)
                             if len(paths) > 1:
                                 print("   🎯 Multiple images: Selecting 'Collage' layout...")
-                                time.sleep(5)
-                                viewport = page.viewport_size
-                                # 네이버 팝업 위치 보정 (중앙 클릭)
-                                page.mouse.click(viewport['width']/2, viewport['height']/2)
-                                time.sleep(1)
-                                page.mouse.click(viewport['width']/2, viewport['height']/2 + 50)
+                                if not self._choose_collage(frame):
+                                    problems.append(f"{i + 1}번 블록의 사진 {len(paths)}장을 콜라주로 넣지 못했습니다")
+                                    self._snap(page, f"collage_fail_{i}", frame)
 
-                            # [유저 요청] 사진 업로드 안정성을 위해 넉넉한 대기 시간 부여 (기본 10초 + 장당 추가)
-                            print(f"   ⏳ Waiting for upload to complete (10s + alpha)...")
-                            time.sleep(10 + (len(paths) * 2)) 
-                            
+                            # 사진이 실제로 다 들어올 때까지 기다린다 (11/19). 예전에는 '10초 + 장당 2초'만 기다리고
+                            # 다음 글을 썼는데, 4장 콜라주는 그 안에 2장만 들어오고 나머지는 끝내 들어오지 않았다.
+                            # 다 올라가도 예전 대기 시간(10초 + 장당 2초)보다 빨리 넘어가지 않는다. 일찍 다음 글을 쓰면
+                            # 편집기가 사진을 마무리하는 중이라 다음 글의 첫 줄이 빠졌다 (11/19 job 9 시험).
+                            print(f"   ⏳ 사진 {len(paths)}장이 다 들어올 때까지 기다립니다...")
+                            started = time.time()
+                            loaded = self._wait_images_loaded(frame, len(paths))
+                            if loaded < len(paths):
+                                problems.append(f"{i + 1}번 블록의 사진이 {len(paths)}장 중 {loaded}장만 들어갔습니다")
+                                self._snap(page, f"image_incomplete_{i}", frame)
+                            time.sleep(max(0, MIN_IMAGE_WAIT_SEC + len(paths) * 2 - (time.time() - started)))
+
                             
                             # 커서를 글 끝(방금 넣은 사진)으로 옮긴다. 빈 줄은 만들지 않는다.
                             body_el.click(force=True)

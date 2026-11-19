@@ -119,6 +119,14 @@ class TestEditorCheck(unittest.TestCase):
         problems = check_editor_html(html(parts), BLOCKS, 3)
         self.assertIn("5번 사진 장수가 다릅니다 (초안 2장, 편집기 3장)", problems)
 
+    def test_preview_only_photo_is_not_uploaded(self):
+        # 11/19: 화면 밖 콜라주 칸은 data: 미리보기에서 멈춘다. 장수는 맞아도 올라가지 않은 사진으로 알린다.
+        parts = good_parts()
+        parts[5] = image_comp(2).replace('src="x.jpg"', 'src="data:image/jpeg;base64,AAAA"', 1)
+        problems = check_editor_html(html(parts), BLOCKS, 3)
+        self.assertIn("5번 사진 1장이 아직 네이버에 올라가지 않았습니다 (미리보기만 있음)", problems)
+        self.assertFalse(any("사진 장수" in p for p in problems))
+
     def test_map_missing_shifts_order(self):
         # 지도 넣기에 실패하면 뒤 블록이 한 칸씩 당겨진다 → 블록 수와 종류가 다르다고 알리고 거기서 멈춘다
         parts = good_parts()

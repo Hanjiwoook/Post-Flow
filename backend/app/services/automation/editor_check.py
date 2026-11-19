@@ -126,9 +126,14 @@ def check_editor_html(html: str, blocks: list, image_count: int) -> list:
                 problems.append(f"{no}번 인용구가 가운데 정렬이 아닙니다")
 
         elif kind in ("image", "imageGroup"):
-            n = len(comp.select(".se-module-image img.se-image-resource"))
+            imgs = comp.select(".se-module-image img.se-image-resource")
+            n = len(imgs)
             if n != exp["photos"]:
                 problems.append(f"{no}번 사진 장수가 다릅니다 (초안 {exp['photos']}장, 편집기 {n}장)")
+            # 주소가 data:이면 내 컴퓨터의 미리보기일 뿐 네이버에 올라가지 않은 사진이다 (11/19, 3장 이상 콜라주에서 발견)
+            pending = sum(1 for img in imgs if (img.get("src") or "").startswith("data:"))
+            if pending:
+                problems.append(f"{no}번 사진 {pending}장이 아직 네이버에 올라가지 않았습니다 (미리보기만 있음)")
 
         elif kind == "placesMap":
             if _norm(exp["place"]) not in _norm(comp.get_text()):

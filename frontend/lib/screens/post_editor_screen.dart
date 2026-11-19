@@ -118,7 +118,6 @@ class PostEditorScreen extends StatefulWidget {
 
 class _PostEditorScreenState extends State<PostEditorScreen> {
   late TextEditingController _titleController;
-  late TextEditingController _instructionController;
   final List<String> _selectedPlatforms = ['naver']; 
 
   @override
@@ -126,13 +125,11 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     super.initState();
     final provider = Provider.of<PostProvider>(context, listen: false);
     _titleController = TextEditingController(text: provider.generatedPost?['title'] ?? '');
-    _instructionController = TextEditingController();
   }
 
   @override
   void dispose() {
     _titleController.dispose();
-    _instructionController.dispose();
     super.dispose();
   }
 
@@ -566,23 +563,8 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
               const SizedBox(height: 100),
             ],
           ),
-          // 하단 입력창
-          Positioned(
-            bottom: 0, left: 0, right: 0,
-            child: Container(
-              padding: const EdgeInsets.all(12), color: Colors.white,
-              child: Row(
-                children: [
-                  Expanded(child: TextField(controller: _instructionController, decoration: InputDecoration(hintText: 'AI에게 수정 요청', filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none)))),
-                  const SizedBox(width: 8),
-                  FloatingActionButton.small(onPressed: () async {
-                    await provider.refineWithInstruction(_instructionController.text);
-                    _titleController.text = provider.generatedPost?['title'] ?? '';
-                  }, child: const Icon(Icons.auto_awesome))
-                ],
-              ),
-            ),
-          ),
+          // 하단 'AI에게 수정 요청' 입력창은 지웠다 (11/18). /refine이 Gemini라 크레딧 소진으로 동작하지 않았고,
+          // 실패해도 화면에 알리지 않았다. 고칠 곳은 글을 직접 고치거나 [검수 받기] → 고쳐쓰기로 한다.
           if (provider.isRefining) Container(color: Colors.black26, child: const Center(child: CircularProgressIndicator())),
           if (provider.isReviewing)
             Container(

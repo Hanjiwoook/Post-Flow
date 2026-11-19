@@ -248,66 +248,6 @@ class PostProvider with ChangeNotifier {
     }
   }
 
-  // 채팅 기반 본문 재구성 (지시사항 반영)
-  Future<void> refineWithInstruction(String instruction) async {
-    if (_generatedPost == null) return;
-    
-    _isRefining = true;
-    notifyListeners();
-    
-    try {
-      final originalBlocks = List<dynamic>.from(_generatedPost!['blocks'] ?? []);
-      final images = List<dynamic>.from(_generatedPost!['images'] ?? []);
-      final blocks = List<dynamic>.from(originalBlocks);
-      final result = await ApiService.refineContent(
-        _generatedPost!['title'], 
-        _generatedPost!['content'], 
-        _generatedPost!['facts'] ?? {}, 
-        'professional',
-        instruction: instruction,
-        images: images,
-        blocks: blocks,
-      );
-      
-      // 스마트 머지: AI 응답 블록과 원본 블록을 비교하여 이미지/구조 보존
-      final resultBlocks = List<dynamic>.from(result['blocks'] ?? []);
-      final mergedBlocks = <dynamic>[];
-      
-      for (int i = 0; i < originalBlocks.length; i++) {
-        final orig = Map<String, dynamic>.from(originalBlocks[i]);
-        
-        if (orig['type'] == 'image' || orig['type'] == 'divider') {
-          // 이미지와 구분선 블록은 원본 그대로 유지 (AI가 건드리면 안 됨)
-          mergedBlocks.add(orig);
-        } else if (i < resultBlocks.length) {
-          // 텍스트/인용구 블록은 AI 결과 사용하되, image_indices는 원본에서 복원
-          final refined = Map<String, dynamic>.from(resultBlocks[i]);
-          if (orig['image_indices'] != null && (orig['image_indices'] as List).isNotEmpty) {
-            refined['image_indices'] = orig['image_indices'];
-          }
-          mergedBlocks.add(refined);
-        } else {
-          // AI가 블록을 줄여버린 경우, 원본 유지
-          mergedBlocks.add(orig);
-        }
-      }
-      
-      _generatedPost!['title'] = result['title'];
-      _generatedPost!['content'] = result['content'];
-      _generatedPost!['tags'] = result['tags'];
-      _generatedPost!['facts'] = result['facts'];
-      _generatedPost!['blocks'] = mergedBlocks;
-      // images는 원본 유지 (AI가 건드리지 못하게)
-
-      
-    } catch (e) {
-      print('Error refining with instruction: $e');
-    } finally {
-      _isRefining = false;
-      notifyListeners();
-    }
-  }
-
   /// 지금 글(편집 화면에서 고친 내용 포함)을 검수 받는다. 실패하면 Exception을 다시 던진다.
   Future<void> requestReview() async {
     final post = _generatedPost;

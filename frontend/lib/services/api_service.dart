@@ -90,39 +90,6 @@ class ApiService {
     }
   }
 
-  // 4. 본문 내용 재구성 요청 (팩트 기반)
-  static Future<Map<String, dynamic>> refineContent(
-      String title, String content, Map<String, dynamic> facts, String style, {List<dynamic> images = const [], List<dynamic> blocks = const [], String? instruction, String? templateName}) async {
-    var uri = Uri.parse('$baseUrl/posts/refine');
-    var body = jsonEncode({
-      'title': title,
-      'content': content,
-      'blocks': blocks,
-      'facts': facts,
-      'images': images,
-      'style': style,
-      'instruction': instruction,
-      'template_name': templateName,
-    });
-
-    var response = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: body,
-    );
-
-    if (response.statusCode == 200) {
-      final decodedData = jsonDecode(utf8.decode(response.bodyBytes));
-      if (decodedData['success'] == true) {
-        return decodedData['data'];
-      } else {
-        throw Exception(decodedData['message'] ?? '재구성 실패');
-      }
-    } else {
-      throw Exception('서버 에러: ${response.statusCode}');
-    }
-  }
-
   // 5. 특정 섹션만 초고속 부분 업데이트 요청
   static Future<Map<String, dynamic>> patchPost(
       String title, List<dynamic> blocks, Map<String, dynamic> facts, {List<dynamic> images = const [], String? style, String? templateName}) async {

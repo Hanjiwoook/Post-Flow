@@ -51,6 +51,19 @@ class LLMResult:
     output_tokens: int
     cost_usd: Optional[float]
     request_id: Optional[str] = None
+    # 출력 토큰 중 AI가 속으로 생각하는 데 쓴 토큰 (output_tokens에 포함, 같은 값으로 청구된다).
+    # 11/19: 글쓰기 출력이 11/13의 1.8배가 된 원인이 대부분 생각 토큰이라 따로 기록한다.
+    thinking_tokens: int = 0
+
+    def usage_dict(self) -> Dict[str, Any]:
+        """앱 응답의 usage 칸 (글쓰기·검수·고쳐쓰기·가게 정보가 같은 모양을 쓴다)."""
+        return {
+            "model": self.model,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "thinking_tokens": self.thinking_tokens,
+            "cost_usd": self.cost_usd,
+        }
 
 
 def model_for(role: str) -> str:
@@ -160,7 +173,10 @@ class LLMClient:
         usage = response.usage
         cost = estimate_cost(used_model, usage.input_tokens, usage.output_tokens)
         cost_text = f"${cost:.4f}" if cost is not None else "가격 정보 없음"
-        print(f"  💰 [{role}] {used_model}: 입력 {usage.input_tokens:,} / 출력 {usage.output_tokens:,} 토큰, "
+        details = getattr(usage, "output_tokens_details", None)
+        thinking_tokens = getattr(details, "thinking_tokens", 0) or 0
+        print(f"  💰 [{role}] {used_model}: 입력 {usage.input_tokens:,} / 출력 {usage.output_tokens:,} 토큰"
+              f"(생각 {thinking_tokens:,}), "
               f"추정 {cost_text} (stop_reason={response.stop_reason}, request_id={request_id})")
 
         if response.stop_reason == "refusal":
@@ -177,6 +193,7 @@ class LLMClient:
             output_tokens=usage.output_tokens,
             cost_usd=cost,
             request_id=request_id,
+            thinking_tokens=thinking_tokens,
         )
 
 

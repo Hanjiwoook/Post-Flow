@@ -114,10 +114,5 @@ async def review_post(
         **review.model_dump(exclude={"questions"}),
         questions=review.questions[:MAX_QUESTIONS],
         format_check={"passed": report.passed, "results": [r.__dict__ for r in report.results]},
-        usage={
-            "model": result.model,
-            "input_tokens": result.input_tokens,
-            "output_tokens": result.output_tokens,
-            "cost_usd": result.cost_usd,
-        },
+        usage=result.usage_dict(),
     )

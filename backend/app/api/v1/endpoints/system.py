@@ -29,8 +29,7 @@ async def get_place_info_api(query: str = Query(..., description="검색할 가�
     data = result.parsed.model_dump()
     data["place_name"] = scraped.get("place_name") or query
     data["full_context"] = raw_text[:1000]  # 앱이 저장해 두는 원문 일부 (글쓰기에는 쓰지 않음)
-    data["usage"] = {"model": result.model, "input_tokens": result.input_tokens,
-                     "output_tokens": result.output_tokens, "cost_usd": result.cost_usd}
+    data["usage"] = result.usage_dict()
     return CommonResponse(success=True, message="가게 정보를 가져왔습니다.", data=data)
 
 @router.get("/health", response_model=CommonResponse)

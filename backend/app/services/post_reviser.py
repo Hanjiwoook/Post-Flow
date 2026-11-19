@@ -147,10 +147,5 @@ async def revise_post(
         change_notes=list(revised.change_notes) + [f"(코드 검증) {f}" for f in fixes],
         edited_blocks=edited,
         format_check={"passed": report.passed, "results": [r.__dict__ for r in report.results]},
-        usage={
-            "model": result.model,
-            "input_tokens": result.input_tokens,
-            "output_tokens": result.output_tokens,
-            "cost_usd": result.cost_usd,
-        },
+        usage=result.usage_dict(),
     )

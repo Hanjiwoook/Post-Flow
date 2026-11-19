@@ -93,6 +93,20 @@ class TestModelAndCost(unittest.TestCase):
 
 
 class TestParse(unittest.IsolatedAsyncioTestCase):
+    async def test_thinking_tokens_recorded(self):
+        # 출력 토큰 중 생각에 쓴 토큰을 따로 기록한다 (비용 원인 파악용). 없는 응답이면 0.
+        response = fake_response()
+        response.usage.output_tokens_details = SimpleNamespace(thinking_tokens=300)
+        client, _ = fake_client(response)
+        result = await LLMClient(client).parse("writer", [text_block("hi")], Answer)
+        self.assertEqual(result.thinking_tokens, 300)
+        self.assertEqual(result.usage_dict()["thinking_tokens"], 300)
+        self.assertEqual(set(result.usage_dict()),
+                         {"model", "input_tokens", "output_tokens", "thinking_tokens", "cost_usd"})
+
+        client, _ = fake_client()
+        self.assertEqual((await LLMClient(client).parse("writer", [text_block("hi")], Answer)).thinking_tokens, 0)
+
     async def test_success(self):
         client, messages = fake_client()
         result = await LLMClient(client).parse("writer", [text_block("hi")], Answer, system="sys", effort="high")

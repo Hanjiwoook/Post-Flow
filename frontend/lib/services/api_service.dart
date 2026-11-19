@@ -73,6 +73,24 @@ class ApiService {
     }
   }
 
+  // 2-1. 발행 상태 조회 (6-4): 발행 결과 창이 몇 초마다 묻는다.
+  // 돌려주는 것: status(PROCESSING/SUCCESS/FAIL), step, error_code, fail_reason, problems
+  static Future<Map<String, dynamic>> getPublishStatus(int postId) async {
+    var uri = Uri.parse('$baseUrl/posts/$postId/status');
+    var response = await http.get(uri);
+
+    if (response.statusCode == 200) {
+      final decodedData = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decodedData['success'] == true) {
+        return Map<String, dynamic>.from(decodedData['data']);
+      } else {
+        throw Exception(decodedData['message'] ?? '발행 상태 조회 실패');
+      }
+    } else {
+      throw Exception('서버 에러: ${response.statusCode}');
+    }
+  }
+
   // 3. 발행 이력 조회
   static Future<List<dynamic>> getHistory() async {
     var uri = Uri.parse('$baseUrl/posts/history');

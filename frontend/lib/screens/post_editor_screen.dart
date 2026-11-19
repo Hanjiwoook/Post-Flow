@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/post_provider.dart';
+import '../services/api_service.dart';
+import '../widgets/publish_result_dialog.dart';
 import '../widgets/writing_report_card.dart';
 import 'review_screen.dart';
 
@@ -450,9 +452,21 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     }
   }
 
-  void _showPublishConfirmation(PostProvider provider) {
-    provider.publishPost(_titleController.text, "", _selectedPlatforms);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('블로그 발행을 시작합니다...')));
+  // 발행(6-4): 요청을 보낸 뒤 결과 창을 열어, 진행 단계와 결과(고칠 것·실패 이유)를 보여준다.
+  Future<void> _showPublishConfirmation(PostProvider provider) async {
+    final List<int> postIds;
+    try {
+      postIds = await provider.publishPost(_titleController.text, "", _selectedPlatforms);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('발행 요청 실패: $e')));
+      return;
+    }
+    if (!mounted || postIds.isEmpty) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => PublishResultDialog(postIds: postIds, fetchStatus: ApiService.getPublishStatus),
+    );
   }
 
   void _showEditInfoModal(BuildContext context, PostProvider provider) {

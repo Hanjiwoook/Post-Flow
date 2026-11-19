@@ -53,6 +53,18 @@ class NaverBlogAutomationV2:
         # 마지막 실행이 로그인이 없거나 만료돼서 멈췄는지. 이때는 다시 시도해도 똑같이 실패하고,
         # 로그인 페이지를 여러 번 여는 것이 네이버 보호조치 위험만 키우므로 재시도하지 않는다 (11/19).
         self.login_required: bool = False
+        # 앱에 보여줄 마지막 실패 이유 (성공하면 빈 문자열)와 지금 단계를 알려 줄 함수 (6-4, 11/19).
+        # on_step은 발행 작업(posts.py)이 DB에 단계를 적으려고 넣는다. 없으면 아무것도 하지 않는다.
+        self.last_error: str = ""
+        self.on_step = None
+
+    def _step(self, text: str):
+        """지금 단계를 알린다. 알리다 실패해도 발행은 멈추지 않는다."""
+        if self.on_step:
+            try:
+                self.on_step(text)
+            except Exception as e:
+                print(f"⚠️ 단계 기록 실패: {e}")
 
     def _snap(self, page, name: str, frame=None):
         """어디서 막혔는지 볼 수 있게 화면(과 편집기 HTML)을 남긴다. 실패해도 발행 흐름은 멈추지 않는다."""
@@ -172,6 +184,8 @@ class NaverBlogAutomationV2:
                 max_retries: int = 3, save: bool = True) -> bool:
         """save=False면 저장 버튼을 누르지 않는다 (시험 모드: 편집기 HTML만 debug 파일로 남기고 닫는다)."""
         for attempt in range(max_retries):
+            if attempt > 0:
+                self._step(f"다시 시도하는 중 ({attempt + 1}/{max_retries})")
             print(f"🔄 [V2 봇 안정화] 네이버 자동 발행 시작 (시도 {attempt + 1}/{max_retries})")
             success = self._execute_publish(title, blocks, image_paths, images_data, facts, save=save)
             if success:
@@ -191,6 +205,7 @@ class NaverBlogAutomationV2:
         print(f"🚀 [V2 인플루언서 콜라주 모드] Starting - Title: {title}")
         self.last_problems = []
         self.login_required = False
+        self.last_error = ""
 
         # 데이터 정규화
         normalized_blocks = []
@@ -203,9 +218,11 @@ class NaverBlogAutomationV2:
         #    11/19: 로그인 저장과 같은 Chrome 프로필로 열어 네이버에 매번 같은 기기로 보이게 한다.
         if not has_saved_login():
             print("❌ 저장된 네이버 로그인이 없습니다. 먼저 로그인을 저장해 주세요:")
+            self.last_error = "저장된 네이버 로그인이 없습니다"
             self.login_required = True
             return False
 
+        self._step("네이버 글쓰기 화면 여는 중")
         with sync_playwright() as p:
             context = open_browser(p)
             page = first_page(context)
@@ -217,6 +234,7 @@ class NaverBlogAutomationV2:
                 page.wait_for_load_state("domcontentloaded")
                 if is_login_page(page.url):
                     print("❌ 저장된 로그인이 만료됐습니다. 다시 로그인을 저장해 주세요:")
+                    self.last_error = "저장된 네이버 로그인이 만료됐습니다"
                     self.login_required = True
                     return False
                 page.wait_for_selector("iframe#mainFrame", timeout=30000)
@@ -252,6 +270,7 @@ class NaverBlogAutomationV2:
                 prev_type = None
 
                 for i, block in enumerate(normalized_blocks):
+                    self._step(f"글 넣는 중 ({i + 1}/{len(normalized_blocks)})")
                     b_type = block.get("type", "text")
                     b_value = block.get("value") or ""
                     indices = block_image_indices(block)
@@ -337,6 +356,7 @@ class NaverBlogAutomationV2:
                 # 예전 테스트 블로그는 블로그 기본 정렬이 가운데라 된 것처럼 보였다. 여자친구 글은 거의 모두 가운데.
                 self._align_all_center(page, frame, body_el)
 
+                self._step("저장 전 자가 검사 중")
                 # 9. 저장 전 자가 검사 (11/18): 편집기 HTML을 초안 블록과 비교한다.
                 # '저장을 눌렀다'만으로는 성공이 아니었다 (11/17 정렬·글씨 크기가 적용 안 된 것을 손으로 비교해 찾음).
                 try:
@@ -354,6 +374,7 @@ class NaverBlogAutomationV2:
                     print("✅ 저장 전 자가 검사 통과: 블록 순서·줄·빈 줄·정렬·글씨 크기·사진·지도 모두 초안과 같습니다")
 
                 # 10. Save
+                self._step("임시저장 중")
                 self._snap(page, "before_save", frame)  # 저장 직전 상태 (편집기 구조 확인용)
                 if not save:
                     print("🧪 시험 모드: 저장하지 않고 닫습니다 (편집기 HTML은 debug 파일로 남김)")
@@ -366,11 +387,13 @@ class NaverBlogAutomationV2:
                     time.sleep(5)  # 프로필 브라우저라 늘어난 로그인 유효기간은 닫을 때 저절로 저장된다
                     return True
                 print("❌ 저장 버튼을 찾지 못했습니다")
+                self.last_error = "편집기에서 저장 버튼을 찾지 못했습니다"
                 self._snap(page, "no_save_button", frame)
                 return False
 
             except Exception as e:
                 print(f"❌ V2 Error: {e}")
+                self.last_error = f"발행 중 오류: {str(e).splitlines()[0] if str(e) else type(e).__name__}"
                 self._snap(page, "error", locals().get("frame"))
                 return False
             finally:

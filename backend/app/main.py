@@ -17,9 +17,13 @@ from .api.v1.api import api_router
 from .db.session import engine
 from .db.base import Base
 from .db import models 
+from .db.migrate import add_missing_columns
 
-# DB 테이블 생성
+# DB 테이블 생성 + 이미 있는 표에 새 칸 추가 (create_all은 칸을 추가해 주지 않는다)
 Base.metadata.create_all(bind=engine)
+_added_columns = add_missing_columns(engine, Base.metadata)
+if _added_columns:
+    print(f"🗄️ [DB] 새 칸 추가: {', '.join(_added_columns)}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

@@ -2,6 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 
+// 서버의 job_id는 플랫폼별 발행 번호를 ", "로 이은 글자다 (예: "12" 또는 "12, 13").
+List<int> parseJobIds(dynamic jobId) {
+  return '${jobId ?? ''}'
+      .split(',')
+      .map((s) => int.tryParse(s.trim()))
+      .whereType<int>()
+      .toList();
+}
+
 class PostProvider with ChangeNotifier {
   List<XFile> _selectedImages = [];
   bool _isLoading = false;
@@ -328,8 +337,9 @@ class PostProvider with ChangeNotifier {
     return grouped;
   }
 
-  Future<void> publishPost(String title, String content, List<String> platforms) async {
-    if (_generatedPost == null) return;
+  // 발행 요청을 보내고, 결과 창(6-4)이 상태를 물어볼 발행 번호 목록을 돌려준다 (플랫폼마다 하나).
+  Future<List<int>> publishPost(String title, String content, List<String> platforms) async {
+    if (_generatedPost == null) return [];
 
     _isLoading = true;
     notifyListeners();
@@ -345,16 +355,17 @@ class PostProvider with ChangeNotifier {
       final images = List<dynamic>.from(_generatedPost!['images'] ?? []);
       final blocks = List<dynamic>.from(_generatedPost!['blocks'] ?? []);
 
-      await ApiService.publishPost(
-        title, 
-        content, 
-        imagePaths, 
+      final job = await ApiService.publishPost(
+        title,
+        content,
+        imagePaths,
         platforms,
         tags: tags,
         facts: facts,
         images: images,
         blocks: blocks,
       );
+      return parseJobIds(job['job_id']);
     } catch (e) {
       print('Error publishing post: $e');
       rethrow;

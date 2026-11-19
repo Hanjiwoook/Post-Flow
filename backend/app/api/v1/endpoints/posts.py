@@ -16,7 +16,7 @@ from ....services.post_reviser import revise_post
 from ....schemas.revise import ReviseRequest, ReviseResult
 from ....services.automation.naver_v2 import naver_automation_v2
 from ....services.automation.tistory import tistory_automation
-from ....schemas.post import AnalyzeResult, PostPublishRequest, JobResponse, PostResponse, RefineRequest, PatchRequest
+from ....schemas.post import AnalyzeResult, PostPublishRequest, JobResponse, PostResponse, PublishStatus, RefineRequest, PatchRequest
 from ....schemas.common import CommonResponse
 from ....db.session import get_db
 from ....db.models import Post
@@ -198,32 +198,66 @@ async def patch_post(
             error=str(e)
         )
 
-# 실제 발행을 수행하는 백그라운드 함수
-def run_publish_job(post_id: int, title: str, blocks: list, image_paths: List[str], images_data: list, facts: dict, platform: str, db_session: Session):
-    success = False
-    post_url = None
-    
-    if platform.upper() == "NAVER":
-        # 네이버 발행 (블록 방식 + 이미지 카테고리 + 팩트 정보 적용)
-        success = naver_automation_v2.publish(title, blocks, image_paths, images_data, facts)
-    elif platform.upper() == "TISTORY":
-        # 티스토리 발행 (기존 방식 유지하되 텍스트만 추출)
-        content = "\n".join([b.get("value", "") for b in blocks if b.get("type") == "text" or b.get("type") == "quote"])
-        post_url = tistory_automation.publish(title, content, image_paths)
-        success = True if post_url else False
-    
-    # DB 상태 업데이트
+# 발행 실패 종류 (앱이 보고 안내를 고른다)
+LOGIN_REQUIRED = "LOGIN_REQUIRED"  # 저장된 로그인이 없거나 만료됨 → 로그인 저장 명령을 안내
+PUBLISH_ERROR = "PUBLISH_ERROR"    # 그 밖의 실패
+
+
+def _update_post(post_id: int, **fields):
+    """발행 작업은 요청이 끝난 뒤 백그라운드에서 돌아서, 요청의 DB 세션 대신 새 세션으로 쓴다."""
     from ....db.session import SessionLocal
     db = SessionLocal()
     try:
         post = db.query(Post).filter(Post.id == post_id).first()
         if post:
-            post.status = "SUCCESS" if success else "FAIL"
-            if post_url:
-                post.post_url = post_url
+            for key, value in fields.items():
+                setattr(post, key, value)
             db.commit()
     finally:
         db.close()
+
+
+# 실제 발행을 수행하는 백그라운드 함수
+# 6-4 (11/19): 결과(성공/실패, 실패 이유, 자가 검사 '고칠 것')와 진행 단계를 DB에 적어 앱이 볼 수 있게 한다.
+def run_publish_job(post_id: int, title: str, blocks: list, image_paths: List[str], images_data: list, facts: dict, platform: str, db_session: Session):
+    success = False
+    post_url = None
+    error_code = None
+    fail_reason = None
+    problems = []
+
+    try:
+        if platform.upper() == "NAVER":
+            bot = naver_automation_v2
+            bot.on_step = lambda text: _update_post(post_id, step=text)
+            try:
+                # 네이버 발행 (블록 방식 + 이미지 카테고리 + 팩트 정보 적용)
+                success = bot.publish(title, blocks, image_paths, images_data, facts)
+            finally:
+                bot.on_step = None
+            problems = list(bot.last_problems)
+            if not success:
+                error_code = LOGIN_REQUIRED if bot.login_required else PUBLISH_ERROR
+                fail_reason = bot.last_error or "발행에 실패했습니다 (서버 로그를 확인해 주세요)"
+        elif platform.upper() == "TISTORY":
+            # 티스토리 발행 (기존 방식 유지하되 텍스트만 추출)
+            content = "\n".join([b.get("value", "") for b in blocks if b.get("type") == "text" or b.get("type") == "quote"])
+            post_url = tistory_automation.publish(title, content, image_paths)
+            success = True if post_url else False
+            if not success:
+                error_code, fail_reason = PUBLISH_ERROR, "티스토리 발행에 실패했습니다"
+        else:
+            error_code, fail_reason = PUBLISH_ERROR, f"지원하지 않는 플랫폼입니다: {platform}"
+    except Exception as e:
+        # 여기서 멈추면 DB가 PROCESSING으로 남아 앱이 끝없이 기다리므로, 실패로 적고 끝낸다
+        print(f"❌ 발행 작업 오류: {e}")
+        success, error_code, fail_reason = False, PUBLISH_ERROR, f"발행 중 예상하지 못한 오류: {e}"
+
+    fields = dict(status="SUCCESS" if success else "FAIL", step=None,
+                  error_code=error_code, fail_reason=fail_reason, problems=problems)
+    if post_url:
+        fields["post_url"] = post_url
+    _update_post(post_id, **fields)
 
 @router.post("/publish", response_model=CommonResponse[JobResponse])
 async def publish_post(
@@ -274,6 +308,22 @@ async def publish_post(
             job_id=", ".join(job_ids),
             status="PROCESSING"
         )
+    )
+
+@router.get("/{post_id}/status", response_model=CommonResponse[PublishStatus])
+async def get_publish_status(post_id: int, db: Session = Depends(get_db)):
+    """발행 결과 창(6-4)이 몇 초마다 묻는 발행 상태. PROCESSING이 끝날 때까지 step이 바뀐다."""
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        return CommonResponse(success=False, message="발행 기록을 찾지 못했습니다.", error=f"post_id={post_id}")
+    return CommonResponse(
+        success=True,
+        message="발행 상태 조회 성공",
+        data=PublishStatus(
+            id=post.id, platform=post.platform, status=post.status, step=post.step,
+            error_code=post.error_code, fail_reason=post.fail_reason,
+            problems=post.problems or [], post_url=post.post_url,
+        ),
     )
 
 @router.get("/history", response_model=CommonResponse[List[PostResponse]])

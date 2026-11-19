@@ -18,6 +18,11 @@ class Post(Base):
     status = Column(String)    # SUCCESS, FAIL, PROCESSING 등
     created_at = Column(DateTime, default=datetime.utcnow)
     post_url = Column(String, nullable=True)
+    # 발행 결과 (6-4, 11/19). 앱의 발행 결과 창이 /posts/{id}/status로 읽는다.
+    step = Column(String, nullable=True)        # 지금 단계 (예: "글 넣는 중 (3/31)")
+    error_code = Column(String, nullable=True)  # LOGIN_REQUIRED(로그인 저장 필요) / PUBLISH_ERROR / None
+    fail_reason = Column(String, nullable=True) # 실패 이유 (사람이 읽는 문장)
+    problems = Column(JSON, nullable=True)      # 저장 전 자가 검사의 '고칠 것' (임시저장은 됨)
 
 
 class WritingStyleProfile(Base):

@@ -70,6 +70,17 @@ class JobResponse(BaseModel):
     job_id: str
     status: str
 
+class PublishStatus(BaseModel):
+    """발행 결과 창(6-4)에 보여줄 발행 상태."""
+    id: int
+    platform: Optional[str] = None
+    status: str                       # PROCESSING / SUCCESS / FAIL
+    step: Optional[str] = None        # 진행 중일 때 지금 단계
+    error_code: Optional[str] = None  # LOGIN_REQUIRED / PUBLISH_ERROR
+    fail_reason: Optional[str] = None
+    problems: List[str] = []          # 저장 전 자가 검사 '고칠 것' (임시저장은 됨)
+    post_url: Optional[str] = None
+
 # --- 추가된 DB 관련 스키마 ---
 
 class PostBase(BaseModel):

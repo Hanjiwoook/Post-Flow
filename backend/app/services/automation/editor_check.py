@@ -11,7 +11,7 @@ import re
 
 from bs4 import BeautifulSoup
 
-FONT_SIZE = "se-fs15"          # 여자친구 글의 글씨 크기 (본문·인용구 모두)
+FONT_SIZE = "se-fs15"          # 기준 블로그 글의 글씨 크기 (본문·인용구 모두)
 ZERO_WIDTH = "\u200b\ufeff"    # 편집기가 빈 문단에 넣는 보이지 않는 글자
 
 
@@ -121,7 +121,7 @@ def check_editor_html(html: str, blocks: list, image_count: int) -> list:
                 problems.append(f"{no}번 인용구 스타일이 다릅니다 (초안 {exp['style']}, 편집기 {_layout(comp)})")
             ps = comp.select(".se-quote .se-text-paragraph")
             _check_lines(no, "인용구", ps, exp["lines"], problems)
-            # 세로줄 인용구 줄은 원래 왼쪽 정렬이다 (여자친구 글도 같음). 기본 인용구만 가운데인지 본다.
+            # 세로줄 인용구 줄은 원래 왼쪽 정렬이다 (기준 블로그 글도 같음). 기본 인용구만 가운데인지 본다.
             if exp["style"] == "default" and any("se-text-paragraph-align-center" not in p.get("class", []) for p in ps):
                 problems.append(f"{no}번 인용구가 가운데 정렬이 아닙니다")
 

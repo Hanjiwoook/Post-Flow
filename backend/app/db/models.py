@@ -30,7 +30,7 @@ class WritingStyleProfile(Base):
     __tablename__ = "writing_style_profiles"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, unique=True, index=True)          # 프로필 이름 (예: "여친 스타일")
+    name = Column(String, unique=True, index=True)          # 프로필 이름 (예: "기준 블로그 스타일")
     blog_id = Column(String, nullable=True)                  # 크롤링 소스 블로그 ID
     profile_data = Column(JSON, nullable=True)               # 분석된 스타일 프로필 JSON
     sample_texts = Column(JSON, nullable=True)               # 크롤링한 원본 텍스트 리스트

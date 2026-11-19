@@ -32,7 +32,7 @@ class Settings:
     # 글 마지막 줄 고정 감사 인사 (블로그 원문 문구라 저장소에 적지 않고 .env에 둔다)
     BLOG_CLOSING_PHRASE: str = os.getenv("BLOG_CLOSING_PHRASE", "")
 
-    # 여자친구 블로그 (크롤러·형식 연구 대상, 스타일 프로필의 출처)
+    # 기준 블로그 (크롤러·형식 연구 대상, 스타일 프로필의 출처)
     GF_BLOG_ID: str = os.getenv("GF_BLOG_ID", "")
 
     # Naver Automation

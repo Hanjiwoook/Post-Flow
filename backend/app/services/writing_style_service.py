@@ -2,7 +2,7 @@
 WritingStyleService - 저장된 글쓰기 스타일 프로필 읽기
 
 글쓰기(post_writer.py)가 활성 프로필의 예시 글(few_shot_examples)을 말투 참고 문장으로 프롬프트에 넣는다.
-프로필은 DB(writing_style_profiles)에 있다. 지금 활성 프로필 = 여자친구 블로그에서 만든 "머로그 스타일".
+프로필은 DB(writing_style_profiles)에 있다. 지금 활성 프로필 = 기준 블로그 글로 만든 프로필.
 
 11/19 (4-5 Gemini 정리): 블로그 글을 Gemini로 분석해 프로필을 새로 만들던 학습 기능
 (analyze_style, select_few_shots, learn_from_blog, /style/learn, /style/preview)은 지웠다.

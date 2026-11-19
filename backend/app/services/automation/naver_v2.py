@@ -48,7 +48,7 @@ def unused_image_indices(blocks: list, image_count: int) -> list:
 
 QUOTE_STYLES = {"default", "quotation_line", "quotation_bubble", "quotation_underline",
                 "quotation_postit", "quotation_corner"}
-QUOTE_FONT_SIZE = "fs15"   # 여자친구 글의 글씨 크기 (본문 기본도 15, 인용구 기본은 더 크다)
+QUOTE_FONT_SIZE = "fs15"   # 기준 블로그 글의 글씨 크기 (본문 기본도 15, 인용구 기본은 더 크다)
 
 
 def pick_place_result(result_texts: list, address: str) -> int:
@@ -158,8 +158,8 @@ class NaverBlogAutomationV2:
     def _align_all_center(self, page, frame, body_el) -> bool:
         """
         전체 선택 → 글씨 크기 15 → 정렬 드롭다운 → 가운데. 끝나고 왼쪽 정렬 문단 수를 세서 알린다.
-        여자친구 글은 본문·인용구 모두 15라서 마지막에 한 번에 맞춘다. 인용구마다 선택하면 꺾인 줄 때문에
-        첫 줄이 빠졌다 (11/17). 세로줄 인용구 줄은 원래 왼쪽 정렬이다 (여자친구 글도 같음).
+        기준 블로그 글은 본문·인용구 모두 15라서 마지막에 한 번에 맞춘다. 인용구마다 선택하면 꺾인 줄 때문에
+        첫 줄이 빠졌다 (11/17). 세로줄 인용구 줄은 원래 왼쪽 정렬이다 (기준 블로그 글도 같음).
         """
         try:
             body_el.click(force=True); time.sleep(1)
@@ -323,7 +323,7 @@ class NaverBlogAutomationV2:
                 failed_image_indices = []
                 problems = []  # 제대로 넣지 못한 블록 (조용히 넘어가지 않고 마지막에 알린다)
 
-                # 블록 사이 간격 (2026-11-17): 여자친구 글은 블록 사이 빈 줄이 0줄이다 (편집기 기본 여백만).
+                # 블록 사이 간격 (2026-11-17): 기준 블로그 글은 블록 사이 빈 줄이 0줄이다 (편집기 기본 여백만).
                 # 예전에는 블록마다 Enter를 3~4번 눌러 빈 줄이 3개씩 생겼다.
                 # 이제 블록을 넣은 뒤에는 Enter를 누르지 않고, 글을 쓰기 직전에만 새 줄이 필요하면 1번 누른다.
                 # 사진·지도·인용구는 커서 다음 자리에 들어가므로 앞에서 Enter를 누르지 않는다.
@@ -353,7 +353,7 @@ class NaverBlogAutomationV2:
                                 frame.locator("button[data-name='image']").first.click(force=True)
                             fc_info.value.set_files(paths)
                             
-                            # 여러 장이면 '사진 첨부 방식' 창에서 콜라주를 고른다 (여자친구 글: 같은 장면 사진을 나란히)
+                            # 여러 장이면 '사진 첨부 방식' 창에서 콜라주를 고른다 (기준 블로그 글: 같은 장면 사진을 나란히)
                             if len(paths) > 1:
                                 print("   🎯 Multiple images: Selecting 'Collage' layout...")
                                 if not self._choose_collage(frame):
@@ -418,7 +418,7 @@ class NaverBlogAutomationV2:
 
                 # 8. Align Center
                 # 정렬 버튼이 드롭다운 하나로 바뀌어 예전 코드는 정렬을 하지 못했다 (11/17 확인).
-                # 예전 테스트 블로그는 블로그 기본 정렬이 가운데라 된 것처럼 보였다. 여자친구 글은 거의 모두 가운데.
+                # 예전 테스트 블로그는 블로그 기본 정렬이 가운데라 된 것처럼 보였다. 기준 블로그 글은 거의 모두 가운데.
                 self._align_all_center(page, frame, body_el)
 
                 self._step("저장 전 자가 검사 중")

@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+python-multipart
+python-dotenv
+anthropic>=2.8
+pillow
+sqlalchemy
+playwright
+playwright-stealth
+pyperclip
+httpx
+beautifulsoup4

@@ -32,14 +32,16 @@ void main() {
     test('메모로 바꾸고 처음부터 체크', () {
       final review = {
         'issues': [
-          {'block_index': 0, 'kind': '사실', 'problem': '날씨 추측', 'suggestion': '빼기'},
+          {'block_index': 0, 'kind': '사실', 'problem': '날씨 추측', 'suggestion': '빼기', 'quote': '금요일 점심에'},
           {'block_index': -2, 'kind': '말투', 'problem': '~구요 반복', 'suggestion': '섞기'},
-          {'block_index': 5, 'kind': '사진', 'problem': '사진 순서', 'suggestion': ''},
+          {'block_index': 5, 'kind': '사진', 'problem': '사진 순서', 'suggestion': '', 'quote': '라멘'},
         ]
       };
       final memos = memosFromReview(review, blocks(), idPrefix: 'r1_');
       expect(memos.map((m) => m['block_index']), [0, 6]);
       expect(memos.first['comment'], '날씨 추측 → 빼기');
+      expect(memos.first['quote'], '금요일 점심에'); // 검수 메모도 문제 문장을 글 안에 칠한다
+      expect(memos.last['quote'], ''); // 사진 묶음 지적을 뒤 글에 옮긴 것은 문장 표시 없음
       expect(memos.last['comment'], '사진 순서');
       expect(memos.every((m) => m['source'] == 'review' && m['checked'] == true && m['status'] == 'draft'), isTrue);
       expect(issuesNotAsMemo(review, blocks()).length, 1);

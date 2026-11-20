@@ -86,6 +86,21 @@ class TestReviewPost(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result.format_check["passed"])
         self.assertEqual(result.usage["model"], "claude-sonnet-5-5")
 
+    async def test_quotes_not_in_text_are_cleared(self):
+        review = fake_review()
+        review.issues = [
+            ReviewIssue(block_index=4, kind="맛", quote="맛있었어요.", problem="p", suggestion="s"),      # 글에 있음
+            ReviewIssue(block_index=4, kind="맛", quote="고소했어요", problem="p", suggestion="s"),       # 글에 없음
+            ReviewIssue(block_index=-1, kind="형식", quote="제목", problem="p", suggestion="s"),          # 제목에 있음
+            ReviewIssue(block_index=-2, kind="말투", quote="라멘", problem="p", suggestion="s"),          # 글 전체
+            ReviewIssue(block_index=3, kind="사진", quote="라멘", problem="p", suggestion="s"),           # 사진 블록
+        ]
+        result = await review_post("제목", BLOCKS, {}, IMAGES, [], client=FakeLLM(review))
+        self.assertEqual([i.quote for i in result.issues], ["맛있었어요.", "", "제목", "", ""])
+        fake = FakeLLM(review)
+        await review_post("제목", BLOCKS, {}, IMAGES, [], client=fake)
+        self.assertIn("quote에 그 부분을 글에서 그대로", fake.calls[0]["content"][0]["text"])
+
     async def test_questions_are_capped(self):
         result = await review_post("제목", BLOCKS, {}, IMAGES, [], client=FakeLLM(fake_review(n_questions=8)))
         self.assertEqual(len(result.questions), MAX_QUESTIONS)

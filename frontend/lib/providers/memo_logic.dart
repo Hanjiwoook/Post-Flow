@@ -64,10 +64,13 @@ List<Map<String, dynamic>> memosFromReview(Map<String, dynamic> review, List<dyn
     if (target == null) continue;
     final problem = '${it['problem'] ?? ''}'.trim();
     final suggestion = '${it['suggestion'] ?? ''}'.trim();
+    // quote(문제 문장)는 지적이 가리킨 블록 기준이라, 사진 묶음 지적을 뒤 글에 옮겨 단 경우에는 쓰지 않는다
+    final quote = target == it['block_index'] ? '${it['quote'] ?? ''}'.trim() : '';
     out.add(newMemo(
       id: '$idPrefix$n',
       blockIndex: target,
       comment: suggestion.isEmpty ? problem : '$problem → $suggestion',
+      quote: quote,
       source: 'review',
       kind: '${it['kind'] ?? ''}',
     ));

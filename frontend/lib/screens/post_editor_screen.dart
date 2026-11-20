@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/memo_logic.dart' show titleIndex;
+import '../providers/memo_logic.dart' show titleIndex, staleBlocks;
 import '../providers/post_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/publish_result_dialog.dart';
@@ -460,6 +460,37 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     if (comment != null && comment.isNotEmpty) provider.editMemo('${memo['id']}', comment);
   }
 
+  // [AI에게 확인]: 체크한 메모를 보낸다. 제목 칸에서 고친 제목도 같이 보낸다.
+  Future<void> _askMemos(PostProvider provider) async {
+    provider.updateTitle(_titleController.text);
+    try {
+      await provider.requestMemoEdits();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('고친 안 받기 실패: $e')));
+    }
+  }
+
+  void _approveMemo(PostProvider provider, String id) {
+    provider.updateTitle(_titleController.text); // 제목 칸에서 직접 고친 것도 '바뀐 글'로 본다
+    try {
+      provider.approveMemoProposal(id);
+      _titleController.text = provider.generatedPost?['title'] ?? '';
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'.replaceFirst('Exception: ', ''))));
+    }
+  }
+
+  Future<void> _replyMemo(PostProvider provider, String id) async {
+    final reply = await showMemoDialog(context, title: '답장해서 다시 요청', hint: '예: 앞 문장은 원래대로 둬 줘');
+    if (reply == null || reply.isEmpty) return;
+    provider.updateTitle(_titleController.text);
+    try {
+      await provider.replyAndRetry(id, reply);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('고친 안 받기 실패: $e')));
+    }
+  }
+
   // 블록에 단 메모 목록 (제목은 -1)
   Widget _buildMemoList(PostProvider provider, int blockIndex) {
     final memos = provider.memos.where((m) => m['block_index'] == blockIndex).toList();
@@ -468,15 +499,37 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: memos
-            .map((m) => MemoTile(
-                  key: ValueKey('${m['id']}'),
-                  memo: m,
-                  onChecked: (v) => provider.toggleMemo('${m['id']}', v),
-                  onEdit: () => _editMemo(provider, m),
-                  onDelete: () => provider.deleteMemo('${m['id']}'),
-                ))
-            .toList(),
+        children: memos.map((m) {
+          final id = '${m['id']}';
+          final inFlight = provider.isMemoInFlight(id);
+          Widget? below;
+          if (inFlight) {
+            below = const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Row(children: [
+                SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(width: 8),
+                Text('AI가 고친 안을 만드는 중이에요', style: TextStyle(fontSize: 12, color: Colors.black54)),
+              ]),
+            );
+          } else if (m['status'] == 'proposed' && m['proposal'] is Map) {
+            below = ProposalView(
+              memo: m,
+              stale: staleBlocks(provider.generatedPost!, m),
+              onApprove: () => _approveMemo(provider, id),
+              onReject: () => provider.rejectMemo(id),
+              onReply: () => _replyMemo(provider, id),
+            );
+          }
+          return MemoTile(
+            key: ValueKey(id),
+            memo: m,
+            onChecked: inFlight ? null : (v) => provider.toggleMemo(id, v),
+            onEdit: inFlight ? null : () => _editMemo(provider, m),
+            onDelete: inFlight ? null : () => provider.deleteMemo(id),
+            child: below,
+          );
+        }).toList(),
       ),
     );
   }
@@ -594,6 +647,14 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(title: const Text('AI 자동화 에디터'), actions: [
+        Builder(builder: (_) {
+          final pending = provider.memos.where((m) => m['checked'] == true && m['status'] == 'draft').length;
+          return TextButton.icon(
+            onPressed: pending == 0 || provider.isAskingMemos ? null : () => _askMemos(provider),
+            icon: const Icon(Icons.auto_fix_high),
+            label: Text(provider.isAskingMemos ? 'AI가 고치는 중…' : 'AI에게 확인 ($pending)'),
+          );
+        }),
         TextButton.icon(
           onPressed: provider.isReviewing ? null : () => _openReview(provider),
           icon: const Icon(Icons.fact_check_outlined),

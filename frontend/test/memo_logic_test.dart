@@ -164,4 +164,18 @@ void main() {
       expect(out.map((m) => m['block_index']), [5, 0]);
     });
   });
+
+  test('줄 단위 비교', () {
+    final d = lineDiff('안녕하세요~!\n햇살이 따뜻하게\n금요일 점심이었어요', '안녕하세요~!\n금요일 점심에\n다녀왔어요');
+    expect(d.map((e) => '${e.key}${e.value}'), [' 안녕하세요~!', '-햇살이 따뜻하게', '-금요일 점심이었어요', '+금요일 점심에', '+다녀왔어요']);
+    expect(lineDiff('a\nb', 'a\nb').every((e) => e.key == ' '), isTrue);
+    expect(lineDiff('a\nb\nc', 'a\nc').map((e) => e.key), [' ', '-', ' ']);
+  });
+
+  test('안의 블록 위치 이름', () {
+    expect(editPlaceLabel(titleIndex, titleIndex), '제목');
+    expect(editPlaceLabel(6, 6), '이 글');
+    expect(editPlaceLabel(4, 6), '앞 글');
+    expect(editPlaceLabel(9, 6), '뒤 글');
+  });
 }

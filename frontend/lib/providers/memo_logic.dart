@@ -229,3 +229,44 @@ List<Map<String, dynamic>> shiftMemos(List<Map<String, dynamic>> memos, {int? re
   }
   return out;
 }
+
+/// 줄 단위 비교 (원래 → 고친 글). op: ' ' 그대로, '-' 지운 줄, '+' 넣은 줄.
+/// 바뀐 곳을 한눈에 보이게 하려는 것이고, 실제로 넣는 글은 안의 after 그대로다.
+List<MapEntry<String, String>> lineDiff(String before, String after) {
+  final a = before.split('\n');
+  final b = after.split('\n');
+  // 가장 긴 공통 줄 (LCS)
+  final lcs = List.generate(a.length + 1, (_) => List.filled(b.length + 1, 0));
+  for (var i = a.length - 1; i >= 0; i--) {
+    for (var j = b.length - 1; j >= 0; j--) {
+      lcs[i][j] = a[i] == b[j] ? lcs[i + 1][j + 1] + 1 : (lcs[i + 1][j] >= lcs[i][j + 1] ? lcs[i + 1][j] : lcs[i][j + 1]);
+    }
+  }
+  final out = <MapEntry<String, String>>[];
+  var i = 0, j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] == b[j]) {
+      out.add(MapEntry(' ', a[i]));
+      i++;
+      j++;
+    } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
+      out.add(MapEntry('-', a[i++]));
+    } else {
+      out.add(MapEntry('+', b[j++]));
+    }
+  }
+  while (i < a.length) {
+    out.add(MapEntry('-', a[i++]));
+  }
+  while (j < b.length) {
+    out.add(MapEntry('+', b[j++]));
+  }
+  return out;
+}
+
+/// 안의 블록이 메모 기준으로 어디인지: 제목 / 이 글 / 앞 글 / 뒤 글
+String editPlaceLabel(int editIndex, int memoIndex) {
+  if (editIndex == titleIndex) return '제목';
+  if (editIndex == memoIndex) return '이 글';
+  return editIndex < memoIndex ? '앞 글' : '뒤 글';
+}

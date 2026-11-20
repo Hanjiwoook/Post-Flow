@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../providers/memo_logic.dart';
 
 /// 메모 색: 내 메모는 파랑, 검수 지적은 주황
 Color memoColor(Map memo) => memo['source'] == 'review' ? Colors.orange : Colors.blue;
@@ -23,10 +24,11 @@ String memoStatusLabel(Map memo) {
 }
 
 /// 메모를 쓰거나 고치는 창. 취소하면 null.
-Future<String?> showMemoDialog(BuildContext context, {String initial = '', String quote = ''}) {
+Future<String?> showMemoDialog(BuildContext context,
+    {String initial = '', String quote = '', String? title, String? hint}) {
   return showDialog<String>(
     context: context,
-    builder: (_) => _MemoDialog(initial: initial, quote: quote),
+    builder: (_) => _MemoDialog(initial: initial, quote: quote, title: title, hint: hint),
   );
 }
 
@@ -35,7 +37,9 @@ Future<String?> showMemoDialog(BuildContext context, {String initial = '', Strin
 class _MemoDialog extends StatefulWidget {
   final String initial;
   final String quote;
-  const _MemoDialog({required this.initial, required this.quote});
+  final String? title;
+  final String? hint;
+  const _MemoDialog({required this.initial, required this.quote, this.title, this.hint});
 
   @override
   State<_MemoDialog> createState() => _MemoDialogState();
@@ -53,7 +57,7 @@ class _MemoDialogState extends State<_MemoDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(widget.initial.isEmpty ? '메모 남기기' : '메모 고치기'),
+      title: Text(widget.title ?? (widget.initial.isEmpty ? '메모 남기기' : '메모 고치기')),
       content: SizedBox(
         width: 420,
         child: Column(
@@ -68,7 +72,8 @@ class _MemoDialogState extends State<_MemoDialog> {
               controller: _controller,
               autofocus: true,
               maxLines: null,
-              decoration: const InputDecoration(hintText: '예: 이렇게 바꿔 줘, 이건 빼도 돼', border: OutlineInputBorder()),
+              decoration: InputDecoration(
+                  hintText: widget.hint ?? '예: 이렇게 바꿔 줘, 이건 빼도 돼', border: const OutlineInputBorder()),
             ),
           ],
         ),
@@ -185,4 +190,110 @@ Widget memoContextMenu(BuildContext context, EditableTextState state, void Funct
       ...state.contextMenuButtonItems,
     ],
   );
+}
+
+/// 받은 안: 바뀌는 블록마다 원래 → 고친 글(줄 단위 비교), AI 의견, 코드 검증 메모, [승인]·[거절]·[답장해서 다시 요청].
+/// [stale]이 있으면 글이 그 사이 바뀐 것이라 승인을 막는다.
+class ProposalView extends StatelessWidget {
+  final Map memo;
+  final List<int> stale;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+  final VoidCallback onReply;
+
+  const ProposalView({
+    super.key,
+    required this.memo,
+    required this.stale,
+    required this.onApprove,
+    required this.onReject,
+    required this.onReply,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = memo['proposal'] as Map;
+    final memoIndex = memo['block_index'] as int;
+    final edits = List<dynamic>.from(p['edits'] ?? []);
+    final opinion = '${p['opinion'] ?? ''}'.trim();
+    final notes = List<dynamic>.from(p['notes'] ?? []);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (edits.isEmpty)
+            const Text('고친 안 없음', style: TextStyle(fontSize: 12, color: Colors.black54)),
+          for (final e in edits) _editBox(e as Map, memoIndex),
+          if (opinion.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('💬 $opinion', style: const TextStyle(fontSize: 13, height: 1.4)),
+            ),
+          for (final n in notes)
+            Text('(코드 검증) $n', style: const TextStyle(fontSize: 11, color: Colors.black45)),
+          if (stale.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('글이 그 사이 바뀌어서 이 안은 넣을 수 없어요. 답장해서 다시 요청해 주세요.',
+                  style: TextStyle(fontSize: 12, color: Colors.red[700])),
+            ),
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, runSpacing: 4, children: [
+            FilledButton.tonal(
+              onPressed: stale.isEmpty ? onApprove : null,
+              child: Text(edits.isEmpty ? '확인' : '승인'),
+            ),
+            OutlinedButton(onPressed: onReject, child: const Text('거절')),
+            TextButton.icon(onPressed: onReply, icon: const Icon(Icons.reply, size: 16), label: const Text('답장해서 다시 요청')),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _editBox(Map e, int memoIndex) {
+    final index = e['block_index'] as int;
+    final diff = lineDiff('${e['before'] ?? ''}', '${e['after'] ?? ''}');
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(editPlaceLabel(index, memoIndex),
+              style: const TextStyle(fontSize: 11, color: Colors.indigo, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          for (final d in diff) _diffLine(d.key, d.value),
+        ],
+      ),
+    );
+  }
+
+  Widget _diffLine(String op, String line) {
+    final text = line.isEmpty ? ' ' : line;
+    switch (op) {
+      case '-':
+        return Container(
+          width: double.infinity,
+          color: Colors.red[50],
+          child: Text('− $text',
+              style: TextStyle(fontSize: 13, height: 1.5, color: Colors.red[800], decoration: TextDecoration.lineThrough)),
+        );
+      case '+':
+        return Container(
+          width: double.infinity,
+          color: Colors.green[50],
+          child: Text('+ $text', style: TextStyle(fontSize: 13, height: 1.5, color: Colors.green[900])),
+        );
+      default:
+        return Text('   $text', style: const TextStyle(fontSize: 13, height: 1.5, color: Colors.black54));
+    }
+  }
 }

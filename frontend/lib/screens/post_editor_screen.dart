@@ -392,7 +392,10 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                   key: Key('text-$textBlockIndex'),
                   value: sectionText,
                   highlights: memoable ? _highlightsFor(provider, textBlockIndex) : const [],
-                  onChanged: (val) { provider.generatedPost!['blocks'][textBlockIndex]['value'] = val; },
+                  onChanged: (val) {
+                    provider.generatedPost!['blocks'][textBlockIndex]['value'] = val;
+                    provider.markEdited(); // 직접 고친 글도 자동 저장
+                  },
                   contextMenuBuilder: memoable
                       ? (context, state) => memoContextMenu(context, state, (quote) => _addMemo(provider, textBlockIndex, quote: quote))
                       : null,
@@ -717,6 +720,10 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                       controller: _titleController..highlights = _highlightsFor(provider, titleIndex),
                       decoration: const InputDecoration(hintText: '제목', border: InputBorder.none),
                       style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                      onChanged: (v) {
+                        provider.updateTitle(v);
+                        provider.markEdited();
+                      },
                       contextMenuBuilder: (context, state) =>
                           memoContextMenu(context, state, (quote) => _addMemo(provider, titleIndex, quote: quote)),
                     ),

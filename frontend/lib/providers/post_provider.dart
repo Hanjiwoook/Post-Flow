@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
+import '../services/draft_store.dart';
 import 'memo_logic.dart';
 
 // 서버의 job_id는 플랫폼별 발행 번호를 ", "로 이은 글자다 (예: "12" 또는 "12, 13").
@@ -13,6 +15,11 @@ List<int> parseJobIds(dynamic jobId) {
 }
 
 class PostProvider with ChangeNotifier {
+  // 작업 중인 글을 노트북 파일에 자동 저장한다 (앱을 꺼도 [이어서 작업하기]). 테스트에서는 넣지 않거나 임시 폴더를 쓴다.
+  PostProvider({DraftStore? store}) : _store = store;
+  final DraftStore? _store;
+  Timer? _saveTimer;
+
   List<XFile> _selectedImages = [];
   bool _isLoading = false;
   bool _isRefining = false;
@@ -38,6 +45,60 @@ class PostProvider with ChangeNotifier {
   Map<String, dynamic>? get review => _generatedPost?['review'] as Map<String, dynamic>?;
   // 고쳐쓰기는 글 하나에 한 번만 (11/13 결정: 검토 후 고쳐쓰기 최대 1회)
   bool get hasRevised => _generatedPost?['revised'] == true;
+
+  // ---------------- 자동 저장 ----------------
+
+  // 상태가 바뀔 때마다(notifyListeners) 0.5초 뒤 저장한다. 연달아 바뀌면 마지막 것만 저장.
+  @override
+  void notifyListeners() {
+    super.notifyListeners();
+    _scheduleSave();
+  }
+
+  /// 글 칸에서 직접 고친 것처럼 알림 없이 바뀐 것도 저장하게 한다.
+  void markEdited() => _scheduleSave();
+
+  void _scheduleSave() {
+    if (_store == null || _generatedPost == null) return; // 글이 없을 때는 앞의 저장본을 지우지 않는다
+    _saveTimer?.cancel();
+    _saveTimer = Timer(const Duration(milliseconds: 500), saveNow);
+  }
+
+  void saveNow() {
+    _saveTimer?.cancel();
+    final post = _generatedPost;
+    if (_store == null || post == null) return;
+    try {
+      _store.save(post, _selectedImages.map((x) => x.path).toList());
+    } catch (e) {
+      debugPrint('작업 중인 글 저장 실패: $e');
+    }
+  }
+
+  /// 저장해 둔 글 (없으면 null). 홈 화면 [이어서 작업하기] 카드에 쓴다.
+  Map<String, dynamic>? get savedDraft => _store?.load();
+
+  /// 저장해 둔 글을 연다. 없으면 false.
+  bool resumeSavedDraft() {
+    final data = _store?.load();
+    if (data == null) return false;
+    _selectedImages = List<dynamic>.from(data['local_image_paths'] ?? []).map((p) => XFile('$p')).toList();
+    _generatedPost = Map<String, dynamic>.from(data['post'] as Map);
+    notifyListeners();
+    return true;
+  }
+
+  void discardSavedDraft() {
+    _saveTimer?.cancel();
+    _store?.clear();
+    super.notifyListeners(); // 지운 직후 다시 저장하지 않도록 저장 예약 없이 알린다
+  }
+
+  @override
+  void dispose() {
+    if (_saveTimer?.isActive ?? false) saveNow();
+    super.dispose();
+  }
 
   void setImages(List<XFile> images) {
     _selectedImages = images;

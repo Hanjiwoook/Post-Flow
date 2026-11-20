@@ -149,7 +149,7 @@ void main() {
       expect(blocks[0]['value'], '안녕하세요~! 오늘은 라멘이에요');
       expect(blocks[2]['value'], '라멘이 나왔어요\n국물이 진했어요');
       expect(blocks[1]['value'], '유카이도'); // 인용구는 그대로
-      expect(find.text('반영함'), findsOneWidget);
+      expect(find.text('끝난 메모 1개 보기'), findsOneWidget);
 
       await tester.tap(inMemo('t1', find.text('승인')));
       await tester.pump();
@@ -166,12 +166,18 @@ void main() {
       expect(find.textContaining('넣을 수 없어요'), findsWidgets);
     });
 
-    testWidgets('거절하면 글은 그대로', (tester) async {
+    testWidgets('거절하면 글은 그대로이고, 끝난 메모는 접혀 있다가 펼칠 수 있다', (tester) async {
       final provider = await pumpWithProposal(tester);
       await tester.tap(inMemo('u1', find.text('거절')));
       await tester.pump();
       expect((provider.generatedPost!['blocks'] as List)[2]['value'], '라멘이 나왔어요');
+      expect(find.byKey(const ValueKey('u1')), findsNothing); // 끝난 메모는 접힘
+      await tester.tap(find.text('끝난 메모 1개 보기'));
+      await tester.pump();
       expect(find.text('거절함'), findsOneWidget);
+      await tester.tap(find.text('끝난 메모 접기'));
+      await tester.pump();
+      expect(find.text('거절함'), findsNothing);
     });
   });
 

@@ -122,7 +122,8 @@ class PostEditorScreen extends StatefulWidget {
 
 class _PostEditorScreenState extends State<PostEditorScreen> {
   late HighlightTextController _titleController;
-  final List<String> _selectedPlatforms = ['naver']; 
+  final List<String> _selectedPlatforms = ['naver'];
+  final Set<int> _showDoneMemos = {}; // 끝난 메모(승인·거절)를 펼쳐 둔 블록 
 
   @override
   void initState() {
@@ -503,13 +504,19 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
 
   // 블록에 단 메모 목록 (제목은 -1)
   Widget _buildMemoList(PostProvider provider, int blockIndex) {
-    final memos = provider.memos.where((m) => m['block_index'] == blockIndex).toList();
-    if (memos.isEmpty) return const SizedBox.shrink();
+    final all = provider.memos.where((m) => m['block_index'] == blockIndex).toList();
+    if (all.isEmpty) return const SizedBox.shrink();
+    // 승인·거절한 메모는 접어 두고 남은 할 일만 보인다
+    bool isDone(Map m) => m['status'] == 'approved' || m['status'] == 'rejected';
+    final done = all.where(isDone).length;
+    final showDone = _showDoneMemos.contains(blockIndex);
+    final memos = showDone ? all : all.where((m) => !isDone(m)).toList();
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: memos.map((m) {
+        children: [
+          ...memos.map((m) {
           final id = '${m['id']}';
           final inFlight = provider.isMemoInFlight(id);
           Widget? below;
@@ -539,7 +546,17 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
             onDelete: inFlight ? null : () => provider.deleteMemo(id),
             child: below,
           );
-        }).toList(),
+          }),
+          if (done > 0)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => setState(() => showDone ? _showDoneMemos.remove(blockIndex) : _showDoneMemos.add(blockIndex)),
+                icon: Icon(showDone ? Icons.expand_less : Icons.expand_more, size: 20),
+                label: Text(showDone ? '끝난 메모 접기' : '끝난 메모 $done개 보기', style: const TextStyle(fontSize: 14)),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -50,14 +50,20 @@ void main() {
       expect(issuesNotAsMemo(review, blocks()).length, 1);
     });
 
-    test('다시 검수하면 승인한 검수 메모와 내 메모만 남는다', () {
+    test('다시 검수하면 보내지 않은 검수 메모만 바뀌고, 안 받은·끝난 메모와 내 메모는 남는다', () {
       final existing = [
         newMemo(id: 'u1', blockIndex: 4, comment: '내 메모'),
         {...newMemo(id: 'r1_0', blockIndex: 0, comment: 'a', source: 'review'), 'status': 'approved'},
-        newMemo(id: 'r1_1', blockIndex: 6, comment: 'b', source: 'review'),
+        newMemo(id: 'r1_1', blockIndex: 6, comment: 'b', source: 'review'), // draft → 바뀜
+        {...newMemo(id: 'r1_2', blockIndex: 4, comment: 'c', quote: '가게 앞', source: 'review'), 'status': 'proposed'},
+        {...newMemo(id: 'r1_3', blockIndex: 6, comment: 'd', source: 'review'), 'status': 'rejected'},
       ];
-      final merged = mergeReviewMemos(existing, [newMemo(id: 'r2_0', blockIndex: 6, comment: 'c', source: 'review')]);
-      expect(merged.map((m) => m['id']), ['u1', 'r1_0', 'r2_0']);
+      final merged = mergeReviewMemos(existing, [
+        newMemo(id: 'r2_0', blockIndex: 6, comment: 'e', source: 'review'),
+        newMemo(id: 'r2_1', blockIndex: 4, comment: '다른 말', quote: '가게 앞', source: 'review'), // r1_2와 같은 문장 → 중복
+        newMemo(id: 'r2_2', blockIndex: 6, comment: 'd', source: 'review'), // r1_3과 같은 문제 → 중복
+      ]);
+      expect(merged.map((m) => m['id']), ['u1', 'r1_0', 'r1_2', 'r1_3', 'r2_0']);
     });
   });
 

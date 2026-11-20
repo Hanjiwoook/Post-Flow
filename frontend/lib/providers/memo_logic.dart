@@ -81,12 +81,18 @@ List<Map<String, dynamic>> memosFromReview(Map<String, dynamic> review, List<dyn
   return out;
 }
 
-/// 다시 검수하면: 승인한 검수 메모와 내 메모는 남기고, 나머지 검수 메모는 새 지적으로 바꾼다.
+/// 다시 검수하면: 내 메모와, 안을 받았거나(proposed) 승인·거절한 검수 메모는 남기고,
+/// 아직 보내지 않은(draft) 검수 메모만 새 지적으로 바꾼다.
+/// 새 지적이 남긴 메모와 같은 블록·같은 문장(문장이 없으면 같은 문제)이면 중복이라 넣지 않는다.
 List<Map<String, dynamic>> mergeReviewMemos(List<Map<String, dynamic>> existing, List<Map<String, dynamic>> fromReview) {
-  return [
-    ...existing.where((m) => m['source'] != 'review' || m['status'] == 'approved'),
-    ...fromReview,
-  ];
+  final kept = existing.where((m) => m['source'] != 'review' || m['status'] != 'draft').toList();
+  String keyOf(Map m) {
+    final quote = '${m['quote'] ?? ''}'.trim();
+    return '${m['block_index']}|${quote.isNotEmpty ? 'q:$quote' : 'c:${'${m['comment'] ?? ''}'.trim()}'}';
+  }
+
+  final keptKeys = kept.where((m) => m['source'] == 'review').map(keyOf).toSet();
+  return [...kept, ...fromReview.where((m) => !keptKeys.contains(keyOf(m)))];
 }
 
 /// 지적이 메모로 옮겨지지 않는 것(글 전체 등)만 남긴다. 검수 화면에 그대로 보여 준다.

@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../providers/memo_logic.dart' show titleIndex;
 import '../providers/post_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/publish_result_dialog.dart';
+import '../widgets/memo_widgets.dart';
 import '../widgets/writing_report_card.dart';
 import 'review_screen.dart';
 
@@ -271,6 +273,10 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     // 고쳐쓰기(6-3)에서 바뀐 글은 초록 테두리로 표시한다
     final edited = List<dynamic>.from(provider.generatedPost?['edited_blocks'] ?? []);
     final wasEdited = textBlockIndex != null && edited.contains(textBlockIndex);
+    // 메모는 글(text) 블록에만 단다. 인용구(가게 이름·정보)는 고치지 않는다
+    final blocks = List<dynamic>.from(provider.generatedPost?['blocks'] ?? []);
+    final memoable = !unplaced && textBlockIndex != null && textBlockIndex < blocks.length &&
+        ((blocks[textBlockIndex] as Map)['type'] ?? 'text') == 'text';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -303,6 +309,12 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                         child: Text("${sectionImages.length}장의 사진", style: const TextStyle(fontSize: 11, color: Colors.indigoAccent)),
                       ),
                   ],
+                ),
+                if (memoable) IconButton(
+                  tooltip: '메모 남기기 (글을 드래그한 뒤 우클릭해도 돼요)',
+                  icon: const Icon(Icons.sticky_note_2_outlined, size: 18, color: Colors.blue),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _addMemo(provider, textBlockIndex),
                 ),
                 // 섹션 삭제 버튼 추가
                 if (!unplaced) IconButton(
@@ -380,8 +392,12 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                 decoration: const InputDecoration(border: InputBorder.none, isDense: true),
                 style: const TextStyle(fontSize: 15, height: 1.5),
                 onChanged: (val) { provider.generatedPost!['blocks'][textBlockIndex]['value'] = val; },
+                contextMenuBuilder: memoable
+                    ? (context, state) => memoContextMenu(context, state, (quote) => _addMemo(provider, textBlockIndex, quote: quote))
+                    : null,
               ),
             ),
+          if (memoable) _buildMemoList(provider, textBlockIndex),
         ],
       ),
     );
@@ -430,6 +446,39 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
         ),
       );
     }).toList();
+  }
+
+  // ---------------- 메모 ----------------
+
+  Future<void> _addMemo(PostProvider provider, int blockIndex, {String quote = ''}) async {
+    final comment = await showMemoDialog(context, quote: quote);
+    if (comment != null && comment.isNotEmpty) provider.addMemo(blockIndex, comment, quote: quote);
+  }
+
+  Future<void> _editMemo(PostProvider provider, Map memo) async {
+    final comment = await showMemoDialog(context, initial: '${memo['comment'] ?? ''}', quote: '${memo['quote'] ?? ''}');
+    if (comment != null && comment.isNotEmpty) provider.editMemo('${memo['id']}', comment);
+  }
+
+  // 블록에 단 메모 목록 (제목은 -1)
+  Widget _buildMemoList(PostProvider provider, int blockIndex) {
+    final memos = provider.memos.where((m) => m['block_index'] == blockIndex).toList();
+    if (memos.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: memos
+            .map((m) => MemoTile(
+                  key: ValueKey('${m['id']}'),
+                  memo: m,
+                  onChecked: (v) => provider.toggleMemo('${m['id']}', v),
+                  onEdit: () => _editMemo(provider, m),
+                  onDelete: () => provider.deleteMemo('${m['id']}'),
+                ))
+            .toList(),
+      ),
+    );
   }
 
   // 검수(6-3): 결과가 없으면 먼저 검수를 받고, 검수 화면을 연다. 고쳐 쓰고 돌아오면 제목 칸도 바꾼다.
@@ -561,7 +610,23 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
               // 예전 'AI 분석 인사이트' 카드는 입력한 리뷰 요약을 다시 보여 줄 뿐이었다.
               WritingReportCard(post: post),
               const SizedBox(height: 20),
-              TextField(controller: _titleController, decoration: const InputDecoration(hintText: '제목', border: InputBorder.none), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              Row(children: [
+                Expanded(
+                  child: TextField(
+                    controller: _titleController,
+                    decoration: const InputDecoration(hintText: '제목', border: InputBorder.none),
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                    contextMenuBuilder: (context, state) =>
+                        memoContextMenu(context, state, (quote) => _addMemo(provider, titleIndex, quote: quote)),
+                  ),
+                ),
+                IconButton(
+                  tooltip: '제목에 메모 남기기',
+                  icon: const Icon(Icons.sticky_note_2_outlined, size: 20, color: Colors.blue),
+                  onPressed: () => _addMemo(provider, titleIndex),
+                ),
+              ]),
+              _buildMemoList(provider, titleIndex),
               const Divider(height: 30),
 
               // 섹션 리스트: 블록 순서 그대로 (= 네이버에 발행되는 순서)

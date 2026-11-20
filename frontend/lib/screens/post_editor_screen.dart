@@ -326,7 +326,10 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                       context: context,
                       builder: (context) => AlertDialog(
                         title: const Text("섹션 삭제"),
-                        content: Text("'$sectionTitle' 섹션을 정말 삭제하시겠습니까?\n글과 이미지가 모두 제거됩니다."),
+                        // 실제 동작대로 안내한다 (11/12 발견: 예전 문구는 사진도 지워진다고 했지만 사진은 '글에서 뺀 사진'으로 간다)
+                        content: Text("'$sectionTitle' 섹션의 글을 지울까요?\n"
+                            "사진은 지워지지 않고 아래 '글에서 뺀 사진'으로 옮겨져요. 그대로 두면 네이버에 올라가지 않고, [다시 넣기]로 되돌릴 수 있어요.\n"
+                            "이 글에 단 메모도 함께 지워져요."),
                         actions: [
                           TextButton(onPressed: () => Navigator.pop(context), child: const Text("취소")),
                           TextButton(

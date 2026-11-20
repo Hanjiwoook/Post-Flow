@@ -66,6 +66,17 @@ void main() {
     expect([added['block_index'], added['comment'], added['source'], added['checked']], [2, '이건 빼도 돼', 'user', true]);
   });
 
+  testWidgets('섹션 삭제 창은 사진이 남는다고 안내하고, 지우면 그 글의 메모도 지워진다', (tester) async {
+    final provider = await pumpEditor(tester);
+    await tester.tap(find.byIcon(Icons.delete_outline).last); // 마지막 글(2번)
+    await tester.pumpAndSettle();
+    expect(find.textContaining("사진은 지워지지 않고 아래 '글에서 뺀 사진'으로 옮겨져요"), findsOneWidget);
+    expect(find.textContaining('글과 이미지가 모두 제거됩니다'), findsNothing);
+    await tester.tap(find.text('삭제'));
+    await tester.pumpAndSettle();
+    expect(provider.memos.map((m) => m['id']), isNot(contains('u1')));
+  });
+
   testWidgets('검수 메모의 고칠 방향은 접혀 있다가 누르면 펼쳐진다', (tester) async {
     await pumpEditor(tester);
     expect(find.text('날씨 추측'), findsOneWidget);

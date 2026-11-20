@@ -108,6 +108,7 @@ Map<String, dynamic> memoPayload(Map<String, dynamic> m) => {
       // AI에게는 고칠 방향까지 같이 보낸다
       'comment': '${m['suggestion'] ?? ''}'.trim().isEmpty ? (m['comment'] ?? '') : '${m['comment'] ?? ''} → ${m['suggestion']}',
       'source': m['source'] ?? 'user',
+      'kind': m['kind'] ?? '', // '사실' 검수 메모면 서버가 앞 사진을 같이 보낸다
       'thread': List<dynamic>.from(m['thread'] ?? []),
     };
 

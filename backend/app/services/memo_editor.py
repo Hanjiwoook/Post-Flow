@@ -7,13 +7,16 @@
   - 범위 밖 수정, text가 아닌 블록, 빈 내용은 코드가 버리고 notes에 이유를 남긴다.
   - 원래 글(before)은 서버가 채운다. 승인은 앱에서 하고 AI를 다시 부르지 않는다.
 """
-from typing import Dict, List, Optional, Set
+import os
+from typing import Dict, List, Optional, Set, Tuple
+
+from PIL import Image
 
 from ..core.config import settings
 from ..schemas.memo_edit import TITLE_INDEX, AIEdit, Memo, MemoEditOutput, MemoEditResult, Proposal, ProposalEdit
 from ..schemas.post import ContentBlock, ImageInfo
 from ..schemas.revise import UserAnswer
-from .llm_client import LLMClient, llm, text_block
+from .llm_client import LLMClient, image_block, llm, text_block
 from .post_reviewer import render_draft
 from .post_reviser import render_answers, usable_answers
 from .post_writer import fact_flag
@@ -91,6 +94,7 @@ def validate_proposal(title: str, blocks: List[ContentBlock], memo: Memo,
 # AI 호출
 # ---------------------------------------------------------------------------
 MEMO_EFFORT = "medium"
+MAX_FACT_PHOTOS = 6  # 사실 확인용 사진은 한 번 호출에 최대 6장 (비용)
 
 SYSTEM = """\
 너는 이 블로그 주인의 글을 다듬는 편집자다.
@@ -110,14 +114,48 @@ MEMO_RULES = """\
 - [이전 대화]가 있으면 블로그 주인이 앞의 안에 답장한 것이다. 답장을 우선해서 다시 고친다.
 - opinion은 블로그 주인에게 말하듯 한두 문장으로, 무엇을 왜 바꿨는지 적는다 (예: "앞 문장도 같이 다듬었어요").
 - 사진 묶음 바로 뒤 글은 그 사진을 설명해야 한다. 다른 사진의 내용을 옮겨 오지 않는다.
-- [사용자 답변]은 블로그 주인이 직접 답한 사실이다. [사실 목록]과 같은 근거로 쓴다."""
+- [사용자 답변]은 블로그 주인이 직접 답한 사실이다. [사실 목록]과 같은 근거로 쓴다.
+- '사실 확인용 사진'이 붙은 메모는 그 사진을 직접 보고 확인한다. 글의 내용이 사진(간판·안내문·메뉴판 글자 등)에
+  보이면 지적이 틀린 것이므로 고치지 말고, opinion에 '사진에 ~가 보여서 그대로 뒀어요'처럼 적는다.
+  사진에도 없을 때만 지적대로 고친다."""
 
 
 def _where(i: int) -> str:
     return "제목" if i == TITLE_INDEX else f"[{i}]"
 
 
-def render_memos(memos: List[Memo], blocks: List[ContentBlock]) -> str:
+def photo_block_before(blocks: List[ContentBlock], index: int) -> Optional[int]:
+    """메모 단 글 바로 앞의 사진 묶음 (그 글이 설명하는 사진). 구분선만 건너뛴다."""
+    i = index - 1
+    while i >= 0 and blocks[i].type in {"divider", "sticker"}:
+        i -= 1
+    return i if i >= 0 and blocks[i].type == "image" else None
+
+
+def fact_photos(memos: List[Memo], blocks: List[ContentBlock], images: List[ImageInfo]) -> Dict[str, List[Tuple[int, str]]]:
+    """'사실' 검수 메모마다 확인용 사진 (사진 번호, 경로). 파일이 없는 사진은 뺀다. 서로 다른 사진은 모두 합쳐 MAX_FACT_PHOTOS장까지."""
+    out: Dict[str, List[Tuple[int, str]]] = {}
+    used: Set[int] = set()
+    for m in memos:
+        if m.source != "review" or m.kind != "사실" or m.block_index < 0:
+            continue
+        pb = photo_block_before(blocks, m.block_index)
+        if pb is None:
+            continue
+        for idx in blocks[pb].image_indices:
+            if not 0 <= idx < len(images):
+                continue
+            path = images[idx].path
+            if idx not in used:  # 같은 사진을 두 메모가 쓰면 한 번만 센다
+                if not path or not os.path.exists(path) or len(used) >= MAX_FACT_PHOTOS:
+                    continue
+                used.add(idx)
+            out.setdefault(m.id, []).append((idx, path))
+    return out
+
+
+def render_memos(memos: List[Memo], blocks: List[ContentBlock],
+                 photos: Optional[Dict[str, List[Tuple[int, str]]]] = None) -> str:
     out = []
     for m in memos:
         allowed = ", ".join(_where(i) for i in sorted(allowed_blocks(blocks, m.block_index)))
@@ -126,6 +164,8 @@ def render_memos(memos: List[Memo], blocks: List[ContentBlock]) -> str:
         if m.quote.strip():
             lines.append(f"  드래그한 부분: \"{m.quote.strip()}\"")
         lines.append(f"  메모: {m.comment.strip()}")
+        if photos and photos.get(m.id):
+            lines.append("  사실 확인용 사진: " + ", ".join(f"사진 {i}" for i, _ in photos[m.id]) + " (아래에 붙임)")
         if m.thread:
             lines.append("  [이전 대화]")
             lines += [f"    {'AI' if t.role == 'ai' else '블로그 주인'}: {t.text.strip()}" for t in m.thread]
@@ -151,6 +191,7 @@ async def suggest_memo_edits(
             proposals[m.id] = validate_proposal(title, blocks, m, [], "")
 
     usage = None
+    photos = fact_photos(valid, blocks, images)
     if valid:
         sponsored = fact_flag(facts, "sponsored")
         paid_by_self = fact_flag(facts, "paid_by_self") and not sponsored
@@ -165,10 +206,21 @@ async def suggest_memo_edits(
             f"[사용자 답변]\n{render_answers(usable_answers(answers))}",
             "[글쓴이 메모]\n" + ("\n".join(f"- {n}" for n in writing_notes) or "- 없음"),
             f"[초안]\n{render_draft(title, blocks, images)}",
-            f"[메모]\n{render_memos(valid, blocks)}",
+            f"[메모]\n{render_memos(valid, blocks, photos)}",
         ])
-        print(f"\n📝 [MemoEditor] 메모 {len(valid)}개 고친 안 만들기")
-        result = await client.parse("reviser", [text_block(prompt)], MemoEditOutput, system=SYSTEM, effort=MEMO_EFFORT)
+        content = [text_block(prompt)]
+        attached: Set[int] = set()
+        for idx, path in [p for ps in photos.values() for p in ps]:
+            if idx in attached:
+                continue
+            try:
+                with Image.open(path) as img:
+                    content += [text_block(f"[사진 {idx}] 사실 확인용"), image_block(img)]
+                attached.add(idx)
+            except OSError as e:
+                print(f"  ⚠️ 사진 {idx}를 열지 못해 빼고 보냅니다: {e}")
+        print(f"\n📝 [MemoEditor] 메모 {len(valid)}개 고친 안 만들기 (사실 확인 사진 {len(attached)}장)")
+        result = await client.parse("reviser", content, MemoEditOutput, system=SYSTEM, effort=MEMO_EFFORT)
         usage = result.usage_dict()
         by_id = {m.id: m for m in valid}
         for ai in result.parsed.proposals:

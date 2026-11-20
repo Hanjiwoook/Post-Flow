@@ -3,8 +3,12 @@ memo_editor 단위 테스트 (AI 호출 없음).
 
 실행: cd backend → venv\\Scripts\\python -m unittest discover tests
 """
+import os
+import tempfile
 import unittest
 from unittest.mock import patch
+
+from PIL import Image
 
 from fastapi.testclient import TestClient
 
@@ -12,7 +16,8 @@ from app.schemas.memo_edit import AIEdit, AIProposal, Memo, MemoEditOutput, Memo
 from app.schemas.post import ContentBlock, ImageInfo
 from app.schemas.revise import UserAnswer
 from app.services.llm_client import LLMError, LLMResult
-from app.services.memo_editor import SYSTEM, allowed_blocks, suggest_memo_edits, validate_proposal
+from app.services.memo_editor import (MAX_FACT_PHOTOS, SYSTEM, allowed_blocks, fact_photos, photo_block_before,
+                                      suggest_memo_edits, validate_proposal)
 
 TITLE = "테스트식당 라멘 후기"
 BLOCKS = [
@@ -166,6 +171,58 @@ class SuggestMemoEditsTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(LLMError):
             await suggest_memo_edits(TITLE, BLOCKS, {}, IMAGES, [], [memo(7)], [],
                                      client=FakeLLM(error=LLMError("크레딧 부족")))
+
+
+class FactPhotosTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.images = []
+        for i in range(4):
+            path = os.path.join(self.tmp.name, f"{i}.jpg")
+            Image.new("RGB", (40, 30), (i * 40, 100, 100)).save(path)
+            self.images.append(ImageInfo(path=path, category="X", description=f"사진 {i}"))
+        self.images[2] = ImageInfo(path=os.path.join(self.tmp.name, "없는파일.jpg"), category="X")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_photo_block_before(self):
+        self.assertEqual(photo_block_before(BLOCKS, 7), 5)   # 6번 구분선을 건너뛴 5번 사진 묶음
+        self.assertEqual(photo_block_before(BLOCKS, 4), 3)
+        self.assertIsNone(photo_block_before(BLOCKS, 10))    # 바로 앞이 글
+        self.assertIsNone(photo_block_before(BLOCKS, 0))
+
+    def test_only_fact_review_memos_get_photos(self):
+        memos = [
+            Memo(id="f", block_index=7, comment="x", source="review", kind="사실"),   # 사진 1, 2(파일 없음)
+            Memo(id="t", block_index=7, comment="x", source="review", kind="말투"),
+            Memo(id="u", block_index=4, comment="x", source="user", kind="사실"),
+            Memo(id="g", block_index=4, comment="x", source="review", kind="사실"),   # 사진 0
+        ]
+        photos = fact_photos(memos, BLOCKS, self.images)
+        self.assertEqual({k: [i for i, _ in v] for k, v in photos.items()}, {"f": [1], "g": [0]})
+
+    def test_photo_cap(self):
+        blocks = [ContentBlock(type="image", image_indices=list(range(10))), ContentBlock(type="text", value="글")]
+        images = [self.images[0]] * 10
+        photos = fact_photos([Memo(id="f", block_index=1, comment="x", source="review", kind="사실")], blocks, images)
+        self.assertEqual(len(photos["f"]), MAX_FACT_PHOTOS)
+
+    async def test_photos_are_attached_and_listed(self):
+        memo_f = Memo(id="f", block_index=4, comment="확인", source="review", kind="사실")
+        fake = FakeLLM(output())
+        await suggest_memo_edits(TITLE, BLOCKS, {}, self.images, [], [memo_f, memo(7, "u")], [], client=fake)
+        content = fake.calls[0]["content"]
+        self.assertEqual([c["type"] for c in content], ["text", "text", "image"])
+        self.assertEqual(content[1]["text"], "[사진 0] 사실 확인용")
+        prompt = content[0]["text"]
+        self.assertIn("사실 확인용 사진: 사진 0 (아래에 붙임)", prompt)
+        self.assertIn("사진에 ~가 보여서 그대로 뒀어요", prompt)
+
+    async def test_no_photos_for_other_memos(self):
+        fake = FakeLLM(output())
+        await suggest_memo_edits(TITLE, BLOCKS, {}, self.images, [], [memo(7)], [], client=fake)
+        self.assertEqual(len(fake.calls[0]["content"]), 1)
 
 
 class MemoEditEndpointTest(unittest.TestCase):

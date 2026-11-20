@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
+import 'memo_logic.dart';
 
 // 서버의 job_id는 플랫폼별 발행 번호를 ", "로 이은 글자다 (예: "12" 또는 "12, 13").
 List<int> parseJobIds(dynamic jobId) {
@@ -21,12 +22,18 @@ class PostProvider with ChangeNotifier {
   // 새 글이나 다른 기록을 불러오면 함께 사라져서, 다른 글의 검수가 섞이지 않는다.
   bool _isReviewing = false;
   bool _isRevising = false;
+  // 메모로 부분 고치기: 메모는 generatedPost['memos'], 검수 질문 답은 generatedPost['review_answers']
+  final Set<String> _memosInFlight = {};
+  int _memoSeq = 0;
 
   List<XFile> get selectedImages => _selectedImages;
   bool get isLoading => _isLoading;
   bool get isRefining => _isRefining;
   bool get isReviewing => _isReviewing;
   bool get isRevising => _isRevising;
+  bool get isAskingMemos => _memosInFlight.isNotEmpty;
+  bool isMemoInFlight(String id) => _memosInFlight.contains(id);
+  List<Map<String, dynamic>> get memos => _generatedPost == null ? [] : memosOf(_generatedPost!);
   Map<String, dynamic>? get generatedPost => _generatedPost;
   Map<String, dynamic>? get review => _generatedPost?['review'] as Map<String, dynamic>?;
   // 고쳐쓰기는 글 하나에 한 번만 (11/13 결정: 검토 후 고쳐쓰기 최대 1회)
@@ -124,6 +131,7 @@ class PostProvider with ChangeNotifier {
     if (index >= 0 && index < blocks.length) {
       blocks.removeAt(index);
       _generatedPost!['blocks'] = blocks;
+      _shiftBlockRefs(removedAt: index);
       notifyListeners();
     }
   }
@@ -155,6 +163,7 @@ class PostProvider with ChangeNotifier {
     } else {
       blocks.insert(targetBlockIndex, {'type': 'image', 'value': null, 'image_indices': <int>[]});
       imageBlockIndex = targetBlockIndex;
+      _shiftBlockRefs(insertedAt: targetBlockIndex);
     }
     blocks[imageBlockIndex]['image_indices'] = [
       ..._toIntList(blocks[imageBlockIndex]['image_indices']),
@@ -163,6 +172,21 @@ class PostProvider with ChangeNotifier {
 
     _generatedPost!['blocks'] = blocks;
     notifyListeners();
+  }
+
+  // 블록이 지워지거나 끼워지면 메모와 '고침' 표시(edited_blocks)의 블록 번호를 맞춘다
+  void _shiftBlockRefs({int? removedAt, int? insertedAt}) {
+    final post = _generatedPost!;
+    post['memos'] = shiftMemos(memosOf(post), removedAt: removedAt, insertedAt: insertedAt);
+    final edited = <int>[];
+    for (final i in _toIntList(post['edited_blocks'])) {
+      if (removedAt != null) {
+        if (i != removedAt) edited.add(i > removedAt ? i - 1 : i);
+      } else {
+        edited.add(insertedAt != null && i >= insertedAt ? i + 1 : i);
+      }
+    }
+    post['edited_blocks'] = edited;
   }
 
   static List<int> _toIntList(dynamic raw) {
@@ -272,6 +296,9 @@ class PostProvider with ChangeNotifier {
         writingNotes: List<dynamic>.from(post['writing_notes'] ?? []),
       );
       post['review'] = result;
+      // 지적은 해당 블록에 메모로 단다 (다시 검수하면 승인하지 않은 검수 메모는 새 지적으로 바뀐다)
+      final prefix = 'r${++_memoSeq}_';
+      post['memos'] = mergeReviewMemos(memosOf(post), memosFromReview(result, List<dynamic>.from(post['blocks'] ?? []), idPrefix: prefix));
     } finally {
       _isReviewing = false;
       notifyListeners();
@@ -317,6 +344,81 @@ class PostProvider with ChangeNotifier {
     post['edited_blocks'] = List<int>.from(result['edited_blocks'] ?? []);
     post['change_notes'] = List<String>.from((result['change_notes'] ?? []).map((n) => '$n'));
     post['revised'] = true;
+  }
+
+  // ---------------- 메모로 부분 고치기 ----------------
+
+  void _setMemos(List<Map<String, dynamic>> memos) {
+    _generatedPost!['memos'] = memos;
+    notifyListeners();
+  }
+
+  void _updateMemo(String id, Map<String, dynamic> Function(Map<String, dynamic>) change) {
+    if (_generatedPost == null) return;
+    _setMemos(memos.map((m) => m['id'] == id ? change(m) : m).toList());
+  }
+
+  void addMemo(int blockIndex, String comment, {String quote = ''}) {
+    if (_generatedPost == null || comment.trim().isEmpty) return;
+    final id = 'u${DateTime.now().microsecondsSinceEpoch}_${++_memoSeq}';
+    _setMemos([...memos, newMemo(id: id, blockIndex: blockIndex, comment: comment.trim(), quote: quote)]);
+  }
+
+  void editMemo(String id, String comment) => _updateMemo(id, (m) => editMemoComment(m, comment.trim()));
+  void toggleMemo(String id, bool checked) => _updateMemo(id, (m) => {...m, 'checked': checked});
+  void rejectMemo(String id) => _updateMemo(id, (m) => {...m, 'status': 'rejected', 'checked': false});
+
+  void deleteMemo(String id) {
+    if (_generatedPost == null) return;
+    _setMemos(memos.where((m) => m['id'] != id).toList());
+  }
+
+  /// 승인: 안을 그대로 글에 넣는다. 넣을 수 없으면 Exception (글은 그대로).
+  void approveMemoProposal(String id) {
+    if (_generatedPost == null) return;
+    approveMemo(_generatedPost!, id);
+    notifyListeners();
+  }
+
+  /// 검수 화면에서 쓴 질문 답. 메모 고치기의 사실 근거로 같이 보낸다.
+  void setReviewAnswers(List<Map<String, String>> answers) {
+    if (_generatedPost == null) return;
+    _generatedPost!['review_answers'] = answers;
+  }
+
+  /// [AI에게 확인]: 체크한 메모(또는 ids로 고른 메모)를 보내 안을 받는다. 실패하면 Exception.
+  Future<void> requestMemoEdits({List<String>? ids}) async {
+    final post = _generatedPost;
+    if (post == null) return;
+    final targets = ids == null ? pendingMemos(memos) : memos.where((m) => ids.contains(m['id'])).toList();
+    final sending = targets.where((m) => !_memosInFlight.contains(m['id'])).toList();
+    if (sending.isEmpty) return;
+    final sendingIds = sending.map((m) => '${m['id']}').toSet();
+    _memosInFlight.addAll(sendingIds);
+    notifyListeners();
+    try {
+      final result = await ApiService.memoEdit(
+        post['title'] ?? '',
+        List<dynamic>.from(post['blocks'] ?? []),
+        Map<String, dynamic>.from(post['facts'] ?? {}),
+        sending.map(memoPayload).toList(),
+        images: List<dynamic>.from(post['images'] ?? []),
+        writingNotes: List<dynamic>.from(post['writing_notes'] ?? []),
+        answers: List<dynamic>.from(post['review_answers'] ?? []),
+      );
+      // 기다리는 동안 다른 글을 불러왔으면 버린다
+      if (identical(post, _generatedPost)) post['memos'] = attachProposals(memosOf(post), result);
+    } finally {
+      _memosInFlight.removeAll(sendingIds);
+      notifyListeners();
+    }
+  }
+
+  /// 답장해서 다시 요청: 앞의 안과 답장을 대화로 남기고 그 메모만 다시 보낸다.
+  Future<void> replyAndRetry(String id, String reply) async {
+    if (_generatedPost == null || reply.trim().isEmpty) return;
+    _updateMemo(id, (m) => replyToMemo(m, reply));
+    await requestMemoEdits(ids: [id]);
   }
 
   Map<String, List<Map<String, dynamic>>> getImagesByCategory() {

@@ -23,6 +23,7 @@ Map<String, dynamic> newMemo({
   String quote = '',
   String source = 'user',
   String? kind,
+  String suggestion = '',
 }) =>
     {
       'id': id,
@@ -31,6 +32,7 @@ Map<String, dynamic> newMemo({
       'comment': comment,
       'source': source,
       if (kind != null) 'kind': kind,
+      if (suggestion.isNotEmpty) 'suggestion': suggestion, // 검수 메모의 고칠 방향 (화면에서는 접어 둔다)
       'checked': true,
       'status': 'draft',
       'proposal': null,
@@ -69,7 +71,8 @@ List<Map<String, dynamic>> memosFromReview(Map<String, dynamic> review, List<dyn
     out.add(newMemo(
       id: '$idPrefix$n',
       blockIndex: target,
-      comment: suggestion.isEmpty ? problem : '$problem → $suggestion',
+      comment: problem,
+      suggestion: suggestion,
       quote: quote,
       source: 'review',
       kind: '${it['kind'] ?? ''}',
@@ -102,7 +105,8 @@ Map<String, dynamic> memoPayload(Map<String, dynamic> m) => {
       'id': m['id'],
       'block_index': m['block_index'],
       'quote': m['quote'] ?? '',
-      'comment': m['comment'] ?? '',
+      // AI에게는 고칠 방향까지 같이 보낸다
+      'comment': '${m['suggestion'] ?? ''}'.trim().isEmpty ? (m['comment'] ?? '') : '${m['comment'] ?? ''} → ${m['suggestion']}',
       'source': m['source'] ?? 'user',
       'thread': List<dynamic>.from(m['thread'] ?? []),
     };

@@ -91,7 +91,7 @@ class _MemoDialogState extends State<_MemoDialog> {
 
 /// 메모 한 개: 색 띠, 체크(AI에게 보낼지), 드래그한 부분, 메모 내용, 고치기·지우기.
 /// [child]는 받은 안 등 아래에 덧붙일 내용 (6단계).
-class MemoTile extends StatelessWidget {
+class MemoTile extends StatefulWidget {
   final Map memo;
   final ValueChanged<bool>? onChecked;
   final VoidCallback? onEdit;
@@ -101,7 +101,20 @@ class MemoTile extends StatelessWidget {
   const MemoTile({super.key, required this.memo, this.onChecked, this.onEdit, this.onDelete, this.child});
 
   @override
+  State<MemoTile> createState() => _MemoTileState();
+}
+
+class _MemoTileState extends State<MemoTile> {
+  bool _showSuggestion = false; // 검수 메모의 '고칠 방향'은 눌러야 펼친다 (메모가 길어지지 않게)
+
+  @override
   Widget build(BuildContext context) {
+    final memo = widget.memo;
+    final onChecked = widget.onChecked;
+    final onEdit = widget.onEdit;
+    final onDelete = widget.onDelete;
+    final child = widget.child;
+    final suggestion = '${memo['suggestion'] ?? ''}'.trim();
     final color = memoColor(memo);
     final done = memo['status'] == 'approved' || memo['status'] == 'rejected';
     final quote = '${memo['quote'] ?? ''}'.trim();
@@ -127,7 +140,7 @@ class MemoTile extends StatelessWidget {
                     ? Icon(memo['status'] == 'approved' ? Icons.check_circle : Icons.cancel, size: 22, color: color)
                     : Checkbox(
                         value: memo['checked'] == true,
-                        onChanged: onChecked == null ? null : (v) => onChecked!(v ?? false),
+                        onChanged: onChecked == null ? null : (v) => onChecked(v ?? false),
                         visualDensity: VisualDensity.compact,
                       ),
               ),
@@ -158,10 +171,26 @@ class MemoTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // 드래그한 부분은 글 안에도 칠해져 있으므로 두 줄까지만
                   if (quote.isNotEmpty)
-                    Text('“$quote”', style: const TextStyle(fontSize: 14, color: Colors.black54, fontStyle: FontStyle.italic)),
+                    Text('“$quote”',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 14, color: Colors.black54, fontStyle: FontStyle.italic)),
                   Text('${memo['comment'] ?? ''}', style: const TextStyle(fontSize: 16, height: 1.4)),
-                  if (child != null) child!,
+                  if (suggestion.isNotEmpty) ...[
+                    if (_showSuggestion)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('→ $suggestion', style: const TextStyle(fontSize: 15, height: 1.4, color: Colors.black87)),
+                      ),
+                    TextButton(
+                      onPressed: () => setState(() => _showSuggestion = !_showSuggestion),
+                      style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                      child: Text(_showSuggestion ? '고칠 방향 접기' : '고칠 방향 보기', style: const TextStyle(fontSize: 14)),
+                    ),
+                  ],
+                  if (child != null) child,
                 ],
               ),
             ),

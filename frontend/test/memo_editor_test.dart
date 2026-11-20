@@ -16,7 +16,7 @@ Map<String, dynamic> post() => {
       'images': [],
       'memos': [
         newMemo(id: 'u1', blockIndex: 2, comment: '맛 표현 살려 줘', quote: '나왔어요'),
-        newMemo(id: 'r1', blockIndex: 0, comment: '날씨 추측 → 빼기', source: 'review', kind: '사실'),
+        newMemo(id: 'r1', blockIndex: 0, comment: '날씨 추측', suggestion: '날씨 문장은 빼기', source: 'review', kind: '사실'),
         newMemo(id: 't1', blockIndex: titleIndex, comment: '항동 라멘 넣어 줘'),
       ],
     };
@@ -64,6 +64,16 @@ void main() {
     await tester.pumpAndSettle();
     final added = provider.memos.last;
     expect([added['block_index'], added['comment'], added['source'], added['checked']], [2, '이건 빼도 돼', 'user', true]);
+  });
+
+  testWidgets('검수 메모의 고칠 방향은 접혀 있다가 누르면 펼쳐진다', (tester) async {
+    await pumpEditor(tester);
+    expect(find.text('날씨 추측'), findsOneWidget);
+    expect(find.text('→ 날씨 문장은 빼기'), findsNothing);
+    await tester.tap(find.text('고칠 방향 보기'));
+    await tester.pump();
+    expect(find.text('→ 날씨 문장은 빼기'), findsOneWidget);
+    expect(find.text('고칠 방향 접기'), findsOneWidget);
   });
 
   testWidgets('메모 고치기', (tester) async {

@@ -39,7 +39,9 @@ void main() {
       };
       final memos = memosFromReview(review, blocks(), idPrefix: 'r1_');
       expect(memos.map((m) => m['block_index']), [0, 6]);
-      expect(memos.first['comment'], '날씨 추측 → 빼기');
+      expect(memos.first['comment'], '날씨 추측');
+      expect(memos.first['suggestion'], '빼기');
+      expect(memoPayload(memos.first)['comment'], '날씨 추측 → 빼기'); // AI에게는 둘 다
       expect(memos.first['quote'], '금요일 점심에'); // 검수 메모도 문제 문장을 글 안에 칠한다
       expect(memos.last['quote'], ''); // 사진 묶음 지적을 뒤 글에 옮긴 것은 문장 표시 없음
       expect(memos.last['comment'], '사진 순서');

@@ -106,8 +106,9 @@ void main() {
 
     expect(find.textContaining('형식과 사실 근거는 탄탄하고'), findsOneWidget);
     expect(find.text('2/5'), findsOneWidget);
-    expect(find.text('지적 사항 2개'), findsOneWidget);
-    expect(find.text('제목'), findsOneWidget);
+    // 제목·글 지적 2개는 편집 화면 메모로 옮겼다는 안내만 보인다
+    expect(find.textContaining('지적 2개는 편집 화면의 해당 글에 주황 메모로'), findsOneWidget);
+    expect(find.textContaining('글 전체 지적'), findsNothing);
     expect(find.text('Q1. 국물은 어떤 맛이었나요?'), findsOneWidget);
     expect(find.text('✍️ 반영해서 고쳐쓰기'), findsOneWidget);
 
@@ -124,5 +125,36 @@ void main() {
     final button = tester.widget<ElevatedButton>(find.ancestor(
         of: find.text('이미 한 번 고쳐 썼어요 (고쳐쓰기는 한 번만)'), matching: find.byWidgetPredicate((w) => w is ElevatedButton)));
     expect(button.onPressed, isNull);
+  });
+
+  testWidgets('글 전체 지적은 검수 화면에 남는다', (tester) async {
+    tester.view.physicalSize = const Size(1200, 4000);
+    addTearDown(tester.view.resetPhysicalSize);
+    final review = realReview();
+    (review['issues'] as List).add({'block_index': -2, 'kind': '말투', 'problem': '~구요가 반복돼요', 'suggestion': '섞기'});
+    await tester.pumpWidget(screenWith({'title': '제목', 'blocks': blocks, 'review': review}));
+    expect(find.text('글 전체 지적 1개'), findsOneWidget);
+    expect(find.text('~구요가 반복돼요'), findsOneWidget);
+    expect(find.text('글 전체'), findsOneWidget);
+  });
+
+  testWidgets('쓴 답은 저장되어 메모 고치기에 쓰이고, 화면을 다시 열면 그대로 있다', (tester) async {
+    tester.view.physicalSize = const Size(1200, 4000);
+    addTearDown(tester.view.resetPhysicalSize);
+    final provider = PostProvider()..loadFromHistory({'title': '제목', 'blocks': blocks, 'review': realReview()});
+    Widget app() => ChangeNotifierProvider<PostProvider>.value(
+          value: provider,
+          child: const MaterialApp(home: ReviewScreen()),
+        );
+    await tester.pumpWidget(app());
+    await tester.tap(find.text('잡내 없이 깔끔했어요'));
+    await tester.pump();
+    expect(provider.generatedPost!['review_answers'], [
+      {'question': '국물은 어떤 맛이었나요?', 'answer': '잡내 없이 깔끔했어요'},
+    ]);
+
+    await tester.pumpWidget(const SizedBox()); // 화면 닫기
+    await tester.pumpWidget(app()); // 다시 열기
+    expect(find.widgetWithText(TextField, '잡내 없이 깔끔했어요'), findsOneWidget);
   });
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../providers/memo_logic.dart' show issuesNotAsMemo;
 import '../providers/post_provider.dart';
 
 /// 검수 지적이 글의 어디인지 사람이 읽을 수 있게 만든다.
@@ -45,7 +46,24 @@ class ReviewScreen extends StatefulWidget {
 class _ReviewScreenState extends State<ReviewScreen> {
   final Map<int, TextEditingController> _answerControllers = {};
 
-  TextEditingController _controllerFor(int i) => _answerControllers.putIfAbsent(i, () => TextEditingController());
+  // 답 칸: 저장해 둔 답(review_answers)으로 채우고, 고칠 때마다 저장한다 (메모 고치기의 사실 근거로 쓴다)
+  TextEditingController _controllerFor(int i, List<dynamic> questions, PostProvider provider) {
+    return _answerControllers.putIfAbsent(i, () {
+      final question = '${(questions[i] as Map)['question'] ?? ''}';
+      final saved = List<dynamic>.from(provider.generatedPost?['review_answers'] ?? [])
+          .cast<Map>()
+          .where((a) => a['question'] == question)
+          .map((a) => '${a['answer'] ?? ''}')
+          .firstOrNull;
+      final c = TextEditingController(text: saved ?? '');
+      c.addListener(() => _saveAnswers(questions, provider));
+      return c;
+    });
+  }
+
+  void _saveAnswers(List<dynamic> questions, PostProvider provider) {
+    provider.setReviewAnswers(collectAnswers(questions, _answerControllers.map((i, c) => MapEntry(i, c.text))));
+  }
 
   @override
   void dispose() {
@@ -58,9 +76,13 @@ class _ReviewScreenState extends State<ReviewScreen> {
   Future<void> _reReview(PostProvider provider) async {
     try {
       await provider.requestReview();
+      // 새 검수는 질문이 다르므로 답 칸과 저장한 답을 비운다
       for (final c in _answerControllers.values) {
-        c.clear();
+        c.dispose();
       }
+      _answerControllers.clear();
+      provider.setReviewAnswers([]);
+      if (mounted) setState(() {});
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('검수 실패: $e')));
     }
@@ -123,7 +145,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   Widget _buildBody(Map<String, dynamic> review, List<dynamic> blocks, PostProvider provider) {
     final scores = List<dynamic>.from(review['scores'] ?? []);
-    final issues = List<dynamic>.from(review['issues'] ?? []);
+    final allIssues = List<dynamic>.from(review['issues'] ?? []);
+    // 블록에 달 수 있는 지적은 편집 화면에 메모로 달았다. 여기에는 글 전체 지적처럼 메모로 못 옮긴 것만 남긴다.
+    final issues = issuesNotAsMemo(review, blocks);
+    final asMemo = allIssues.length - issues.length;
     final missing = List<dynamic>.from(review['missing_info'] ?? []);
     final questions = List<dynamic>.from(review['questions'] ?? []);
 
@@ -147,8 +172,21 @@ class _ReviewScreenState extends State<ReviewScreen> {
         const SizedBox(height: 16),
 
         // 3. 지적 사항
+        if (asMemo > 0) ...[
+          Card(
+            elevation: 0,
+            color: Colors.orange[50],
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text('지적 $asMemo개는 편집 화면의 해당 글에 주황 메모로 달았어요. '
+                  '글을 보면서 확인하고 [AI에게 확인]으로 고친 안을 받을 수 있어요.',
+                  style: const TextStyle(fontSize: 13, height: 1.4)),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         if (issues.isNotEmpty) ...[
-          _title('지적 사항 ${issues.length}개'),
+          _title('글 전체 지적 ${issues.length}개'),
           ...issues.map((it) => _issueCard(it as Map, blocks)),
           const SizedBox(height: 16),
         ],
@@ -166,8 +204,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
         // 5. 질문
         if (questions.isNotEmpty) ...[
-          _title('알려 주시면 글이 좋아져요 (답하지 않은 질문은 건너뛰어요)'),
-          for (var i = 0; i < questions.length; i++) _questionCard(i, questions[i] as Map),
+          _title('알려 주시면 글이 좋아져요 (쓴 답은 고쳐쓰기와 메모 고치기의 근거로 써요)'),
+          for (var i = 0; i < questions.length; i++) _questionCard(i, questions, provider),
         ],
 
         const SizedBox(height: 16),
@@ -259,8 +297,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
     );
   }
 
-  Widget _questionCard(int i, Map q) {
-    final controller = _controllerFor(i);
+  Widget _questionCard(int i, List<dynamic> questions, PostProvider provider) {
+    final q = questions[i] as Map;
+    final controller = _controllerFor(i, questions, provider);
     final examples = List<dynamic>.from(q['example_answers'] ?? []);
     return Card(
       elevation: 0,

@@ -63,11 +63,18 @@ void main() {
       provider.markEdited();
       await Future<void>.delayed(const Duration(milliseconds: 700));
 
+      // 검수 질문 답 (알림 없이 바뀜) → 저장 예약
+      provider.setReviewAnswers([{'question': '국물은?', 'answer': '진했음'}]);
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+
       final reopened = PostProvider(store: store);
       expect(reopened.resumeSavedDraft(), isTrue);
       expect((reopened.generatedPost!['blocks'] as List)[0]['value'], '직접 고친 글');
       expect(reopened.memos.length, 3);
-      expect(reopened.review, isNotNull);
+      expect(reopened.review, isNotNull); // 검수 결과
+      expect(reopened.generatedPost!['review_answers'], [
+        {'question': '국물은?', 'answer': '진했음'}
+      ]);
     });
 
     test('지우면 저장본이 없어지고, 글이 없을 때는 저장본을 지우지 않는다', () async {

@@ -445,6 +445,7 @@ class PostProvider with ChangeNotifier {
   void setReviewAnswers(List<Map<String, String>> answers) {
     if (_generatedPost == null) return;
     _generatedPost!['review_answers'] = answers;
+    _scheduleSave(); // 답 칸을 고칠 때마다 화면을 다시 그릴 필요는 없어서 알림 없이 저장만 예약한다
   }
 
   /// [AI에게 확인]: 체크한 메모(또는 ids로 고른 메모)를 보내 안을 받는다. 실패하면 Exception.

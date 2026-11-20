@@ -209,18 +209,29 @@ class _ReviewScreenState extends State<ReviewScreen> {
         ],
 
         const SizedBox(height: 16),
-        // 6. 고쳐쓰기
+        // 6. 다음 단계: 검수 내용을 본 뒤 편집 화면에서 메모로 고친다 (지적은 이미 주황 메모로 달려 있다)
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: provider.hasRevised || provider.isRevising ? null : () => _revise(provider, questions),
-            icon: const Icon(Icons.edit_note),
-            label: Text(provider.hasRevised ? '이미 한 번 고쳐 썼어요 (고쳐쓰기는 한 번만)' : '✍️ 반영해서 고쳐쓰기'),
+            onPressed: busy(provider) ? null : () => Navigator.pop(context, false),
+            icon: const Icon(Icons.sticky_note_2_outlined),
+            label: const Text('📝 검수 내용 편집하러 가기 (메모 보면서 고치기)', style: TextStyle(fontSize: 16)),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.indigo,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
+              padding: const EdgeInsets.symmetric(vertical: 18),
             ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        // 예전 방식: 글 전체 고쳐쓰기 (한 번만). 원하는 곳만 고치려면 위 버튼으로 간다.
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: provider.hasRevised || provider.isRevising ? null : () => _revise(provider, questions),
+            icon: const Icon(Icons.edit_note),
+            label: Text(provider.hasRevised ? '이미 한 번 고쳐 썼어요 (고쳐쓰기는 한 번만)' : '글 전체를 한 번에 고쳐쓰기'),
+            style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
           ),
         ),
         if (review['usage'] is Map && review['usage']['cost_usd'] is num)
@@ -232,6 +243,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
       ],
     );
   }
+
+  bool busy(PostProvider provider) => provider.isReviewing || provider.isRevising;
 
   Widget _title(String text) => Padding(
         padding: const EdgeInsets.only(bottom: 8),

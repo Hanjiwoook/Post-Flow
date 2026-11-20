@@ -121,14 +121,14 @@ class PostEditorScreen extends StatefulWidget {
 }
 
 class _PostEditorScreenState extends State<PostEditorScreen> {
-  late TextEditingController _titleController;
+  late HighlightTextController _titleController;
   final List<String> _selectedPlatforms = ['naver']; 
 
   @override
   void initState() {
     super.initState();
     final provider = Provider.of<PostProvider>(context, listen: false);
-    _titleController = TextEditingController(text: provider.generatedPost?['title'] ?? '');
+    _titleController = HighlightTextController(text: provider.generatedPost?['title'] ?? '');
   }
 
   @override
@@ -383,21 +383,22 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                   style: TextStyle(fontSize: 12, color: Colors.black54)),
             )
           else if (textBlockIndex != null)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: TextFormField(
-                key: Key('$textBlockIndex-$sectionText'),
-                initialValue: sectionText,
-                maxLines: null,
-                decoration: const InputDecoration(border: InputBorder.none, isDense: true),
-                style: const TextStyle(fontSize: 15, height: 1.5),
-                onChanged: (val) { provider.generatedPost!['blocks'][textBlockIndex]['value'] = val; },
-                contextMenuBuilder: memoable
-                    ? (context, state) => memoContextMenu(context, state, (quote) => _addMemo(provider, textBlockIndex, quote: quote))
-                    : null,
+            // 넓은 화면이면 글 | 메모를 나란히 (메모가 어느 글 것인지 바로 보이게)
+            textWithMemoSide(
+              text: Padding(
+                padding: const EdgeInsets.all(12),
+                child: MemoTextField(
+                  key: Key('text-$textBlockIndex'),
+                  value: sectionText,
+                  highlights: memoable ? _highlightsFor(provider, textBlockIndex) : const [],
+                  onChanged: (val) { provider.generatedPost!['blocks'][textBlockIndex]['value'] = val; },
+                  contextMenuBuilder: memoable
+                      ? (context, state) => memoContextMenu(context, state, (quote) => _addMemo(provider, textBlockIndex, quote: quote))
+                      : null,
+                ),
               ),
+              memos: memoable ? _buildMemoList(provider, textBlockIndex) : const SizedBox.shrink(),
             ),
-          if (memoable) _buildMemoList(provider, textBlockIndex),
         ],
       ),
     );
@@ -491,6 +492,15 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     }
   }
 
+  // 글 안에 칠할 부분: 아직 끝나지 않은 메모의 드래그한 글자
+  List<MapEntry<String, Color>> _highlightsFor(PostProvider provider, int blockIndex) {
+    return provider.memos
+        .where((m) => m['block_index'] == blockIndex && m['status'] != 'approved' && m['status'] != 'rejected')
+        .map((m) => MapEntry('${m['quote'] ?? ''}'.trim(), memoColor(m)))
+        .where((e) => e.key.isNotEmpty)
+        .toList();
+  }
+
   // 블록에 단 메모 목록 (제목은 -1)
   Widget _buildMemoList(PostProvider provider, int blockIndex) {
     final memos = provider.memos.where((m) => m['block_index'] == blockIndex).toList();
@@ -509,7 +519,7 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
               child: Row(children: [
                 SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
                 SizedBox(width: 8),
-                Text('AI가 고친 안을 만드는 중이에요', style: TextStyle(fontSize: 12, color: Colors.black54)),
+                Text('AI가 고친 안을 만드는 중이에요', style: TextStyle(fontSize: 14, color: Colors.black54)),
               ]),
             );
           } else if (m['status'] == 'proposed' && m['proposal'] is Map) {
@@ -650,9 +660,15 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
         Builder(builder: (_) {
           final pending = provider.memos.where((m) => m['checked'] == true && m['status'] == 'draft').length;
           return TextButton.icon(
+            // 툴팁은 버튼이 잠겨 있어도 보인다 (메모가 없어서 못 누를 때 이유를 알 수 있게)
             onPressed: pending == 0 || provider.isAskingMemos ? null : () => _askMemos(provider),
             icon: const Icon(Icons.auto_fix_high),
-            label: Text(provider.isAskingMemos ? 'AI가 고치는 중…' : 'AI에게 확인 ($pending)'),
+            label: Tooltip(
+              message: pending == 0
+                  ? '고치고 싶은 곳에 메모를 먼저 남겨 주세요 (글 드래그 → 우클릭 → 메모 남기기)'
+                  : '체크한 메모 $pending개를 AI에게 보내 메모마다 고친 안을 받아요. 승인하기 전에는 글이 바뀌지 않아요.',
+              child: Text(provider.isAskingMemos ? 'AI가 고치는 중…' : 'AI에게 확인 ($pending)'),
+            ),
           );
         }),
         TextButton.icon(
@@ -665,29 +681,37 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
       body: Stack(
         children: [
           ListView(
-            padding: const EdgeInsets.all(16),
+            // 큰 화면에서는 내용을 가운데 최대 폭(editorMaxWidth)으로 모은다 (글과 메모가 너무 멀어지지 않게)
+            padding: EdgeInsets.symmetric(
+              vertical: 16,
+              horizontal: ((MediaQuery.sizeOf(context).width - editorMaxWidth) / 2).clamp(16.0, double.infinity),
+            ),
             children: [
               // 작성 리포트: 형식 검사, '확인 필요' 메모, 비용 (6-1, 11/18)
               // 예전 'AI 분석 인사이트' 카드는 입력한 리뷰 요약을 다시 보여 줄 뿐이었다.
               WritingReportCard(post: post),
+              const SizedBox(height: 16),
+              MemoGuideBanner(pending: provider.memos.where((m) => m['checked'] == true && m['status'] == 'draft').length),
               const SizedBox(height: 20),
-              Row(children: [
-                Expanded(
-                  child: TextField(
-                    controller: _titleController,
-                    decoration: const InputDecoration(hintText: '제목', border: InputBorder.none),
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                    contextMenuBuilder: (context, state) =>
-                        memoContextMenu(context, state, (quote) => _addMemo(provider, titleIndex, quote: quote)),
+              textWithMemoSide(
+                text: Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _titleController..highlights = _highlightsFor(provider, titleIndex),
+                      decoration: const InputDecoration(hintText: '제목', border: InputBorder.none),
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                      contextMenuBuilder: (context, state) =>
+                          memoContextMenu(context, state, (quote) => _addMemo(provider, titleIndex, quote: quote)),
+                    ),
                   ),
-                ),
-                IconButton(
-                  tooltip: '제목에 메모 남기기',
-                  icon: const Icon(Icons.sticky_note_2_outlined, size: 20, color: Colors.blue),
-                  onPressed: () => _addMemo(provider, titleIndex),
-                ),
-              ]),
-              _buildMemoList(provider, titleIndex),
+                  IconButton(
+                    tooltip: '제목에 메모 남기기',
+                    icon: const Icon(Icons.sticky_note_2_outlined, size: 20, color: Colors.blue),
+                    onPressed: () => _addMemo(provider, titleIndex),
+                  ),
+                ]),
+                memos: _buildMemoList(provider, titleIndex),
+              ),
               const Divider(height: 30),
 
               // 섹션 리스트: 블록 순서 그대로 (= 네이버에 발행되는 순서)

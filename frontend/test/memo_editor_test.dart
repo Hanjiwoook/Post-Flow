@@ -23,7 +23,7 @@ Map<String, dynamic> post() => {
 
 void main() {
   Future<PostProvider> pumpEditor(WidgetTester tester) async {
-    tester.view.physicalSize = const Size(1200, 4000);
+    tester.view.physicalSize = const Size(1200, 9000);
     addTearDown(tester.view.resetPhysicalSize);
     final provider = PostProvider()..loadFromHistory(post());
     await tester.pumpWidget(ChangeNotifierProvider<PostProvider>.value(
@@ -40,6 +40,8 @@ void main() {
     expect(find.text('항동 라멘 넣어 줘'), findsOneWidget);
     expect(find.text('내 메모'), findsNWidgets(2));
     expect(find.text('검수 지적 · 사실'), findsOneWidget);
+    expect(find.textContaining('메모를 다 적었으면 위의 [AI에게 확인]을 눌러 주세요'), findsOneWidget);
+    expect(find.textContaining('지금 AI에게 보낼 메모: 3개'), findsOneWidget);
     // 인용구 카드에는 메모 버튼이 없다: 제목 + 글 2개 = 3개
     expect(find.byIcon(Icons.sticky_note_2_outlined), findsNWidgets(3));
   });
@@ -82,7 +84,7 @@ void main() {
 
   group('받은 안', () {
     Future<PostProvider> pumpWithProposal(WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1200, 4000);
+      tester.view.physicalSize = const Size(1200, 9000);
       addTearDown(tester.view.resetPhysicalSize);
       final data = post();
       data['memos'] = [
@@ -160,6 +162,67 @@ void main() {
       await tester.pump();
       expect((provider.generatedPost!['blocks'] as List)[2]['value'], '라멘이 나왔어요');
       expect(find.text('거절함'), findsOneWidget);
+    });
+  });
+
+  test('칠할 구간: 첫 위치만, 겹치면 앞의 것', () {
+    final r = highlightRanges('라멘이 나왔어요 라멘이', [
+      const MapEntry('라멘이', Colors.blue),
+      const MapEntry('이 나와', Colors.orange), // 앞 구간과 겹침
+      const MapEntry('없는 글', Colors.blue),
+      const MapEntry('', Colors.blue),
+    ]);
+    expect(r.map((e) => [e.start, e.end]), [[0, 3]]);
+  });
+
+  group('넓은 화면', () {
+    Future<PostProvider> pumpWide(WidgetTester tester, Map<String, dynamic> data) async {
+      tester.view.physicalSize = const Size(1600, 3000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final provider = PostProvider()..loadFromHistory(data);
+      await tester.pumpWidget(ChangeNotifierProvider<PostProvider>.value(
+        value: provider,
+        child: const MaterialApp(home: PostEditorScreen()),
+      ));
+      return provider;
+    }
+
+    testWidgets('메모는 글 오른쪽 옆에 있고, 드래그한 부분은 글 안에 칠해진다', (tester) async {
+      await pumpWide(tester, post());
+      final text = tester.getRect(find.widgetWithText(TextField, '라멘이 나왔어요'));
+      final memo = tester.getRect(find.byKey(const ValueKey('u1')));
+      expect(memo.left, greaterThanOrEqualTo(text.right)); // 글 옆
+      expect(memo.top, lessThan(text.bottom)); // 글 아래가 아니라 같은 높이
+      expect(memo.left - text.left, lessThan(600)); // 글 칸 바로 옆 (화면 오른쪽 끝이 아님)
+      // 화면(1600)이 최대 폭(1240)보다 넓으면 내용이 가운데로 모인다
+      expect(text.left, greaterThan((1600 - 1240) / 2 - 1));
+
+      final field = tester.widget<TextField>(find.widgetWithText(TextField, '라멘이 나왔어요'));
+      final span = field.controller!.buildTextSpan(
+          context: tester.element(find.widgetWithText(TextField, '라멘이 나왔어요')), withComposing: false);
+      final parts = span.children!.cast<TextSpan>();
+      expect(parts.map((p) => p.text), ['라멘이 ', '나왔어요']);
+      expect(parts[1].style?.backgroundColor, isNotNull);
+    });
+
+    testWidgets('승인하면 글 칸도 고친 글로 바뀐다', (tester) async {
+      final data = post();
+      data['memos'] = [
+        {
+          ...newMemo(id: 'u1', blockIndex: 2, comment: 'x', quote: '나왔어요'),
+          'status': 'proposed',
+          'proposal': {
+            'edits': [{'block_index': 2, 'before': '라멘이 나왔어요', 'after': '라멘이 드디어 나왔어요'}],
+            'opinion': '',
+            'notes': [],
+          },
+        },
+      ];
+      await pumpWide(tester, data);
+      await tester.tap(find.text('승인'));
+      await tester.pump();
+      expect(find.widgetWithText(TextField, '라멘이 드디어 나왔어요'), findsOneWidget);
     });
   });
 }

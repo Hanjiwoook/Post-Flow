@@ -110,7 +110,8 @@ void main() {
     expect(find.textContaining('지적 2개는 편집 화면의 해당 글에 주황 메모로'), findsOneWidget);
     expect(find.textContaining('글 전체 지적'), findsNothing);
     expect(find.text('Q1. 국물은 어떤 맛이었나요?'), findsOneWidget);
-    expect(find.text('✍️ 반영해서 고쳐쓰기'), findsOneWidget);
+    expect(find.text('글 전체를 한 번에 고쳐쓰기'), findsOneWidget);
+    expect(find.textContaining('검수 내용 편집하러 가기'), findsOneWidget);
 
     await tester.tap(find.text('잡내 없이 깔끔했어요'));
     await tester.pump();
@@ -122,8 +123,8 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     await tester.pumpWidget(screenWith({'title': '제목', 'blocks': blocks, 'review': realReview(), 'revised': true}));
 
-    final button = tester.widget<ElevatedButton>(find.ancestor(
-        of: find.text('이미 한 번 고쳐 썼어요 (고쳐쓰기는 한 번만)'), matching: find.byWidgetPredicate((w) => w is ElevatedButton)));
+    final button = tester.widget<ButtonStyleButton>(find.ancestor(
+        of: find.text('이미 한 번 고쳐 썼어요 (고쳐쓰기는 한 번만)'), matching: find.byWidgetPredicate((w) => w is OutlinedButton)));
     expect(button.onPressed, isNull);
   });
 
@@ -156,5 +157,29 @@ void main() {
     await tester.pumpWidget(const SizedBox()); // 화면 닫기
     await tester.pumpWidget(app()); // 다시 열기
     expect(find.widgetWithText(TextField, '잡내 없이 깔끔했어요'), findsOneWidget);
+  });
+
+  testWidgets('[검수 내용 편집하러 가기]를 누르면 편집 화면으로 돌아간다', (tester) async {
+    tester.view.physicalSize = const Size(1200, 4000);
+    addTearDown(tester.view.resetPhysicalSize);
+    final provider = PostProvider()..loadFromHistory({'title': '제목', 'blocks': blocks, 'review': realReview()});
+    await tester.pumpWidget(ChangeNotifierProvider<PostProvider>.value(
+      value: provider,
+      child: MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ReviewScreen())),
+            child: const Text('편집 화면'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('편집 화면'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewScreen), findsOneWidget);
+    await tester.tap(find.textContaining('검수 내용 편집하러 가기'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewScreen), findsNothing);
+    expect(find.text('편집 화면'), findsOneWidget);
   });
 }

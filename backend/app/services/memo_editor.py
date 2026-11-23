@@ -114,6 +114,8 @@ MEMO_RULES = """\
 - [이전 대화]가 있으면 블로그 주인이 앞의 안에 답장한 것이다. 답장을 우선해서 다시 고친다.
 - opinion은 블로그 주인에게 말하듯 한두 문장으로, 무엇을 왜 바꿨는지 적는다 (예: "앞 문장도 같이 다듬었어요").
 - 사진 묶음 바로 뒤 글은 그 사진을 설명해야 한다. 다른 사진의 내용을 옮겨 오지 않는다.
+- '질문 답' 메모는 검수 질문에 블로그 주인이 답한 것이다. 그 답의 내용을 이 블록에 자연스럽게 넣는다.
+  답에 없는 내용(맛 평가, 감정, 방문 상황 등)은 덧붙이지 않고, 이미 글에 같은 내용이 있으면 겹치지 않게 다듬는다.
 - [사용자 답변]은 블로그 주인이 직접 답한 사실이다. [사실 목록]과 같은 근거로 쓴다.
 - '사실 확인용 사진'이 붙은 메모는 그 사진을 직접 보고 확인한다. 글의 내용이 사진(간판·안내문·메뉴판 글자 등)에
   보이면 지적이 틀린 것이므로 고치지 말고, opinion에 '사진에 ~가 보여서 그대로 뒀어요'처럼 적는다.
@@ -154,12 +156,15 @@ def fact_photos(memos: List[Memo], blocks: List[ContentBlock], images: List[Imag
     return out
 
 
+MEMO_LABELS = {"review": "검수 지적", "answer": "질문 답", "user": "사용자 메모"}
+
+
 def render_memos(memos: List[Memo], blocks: List[ContentBlock],
                  photos: Optional[Dict[str, List[Tuple[int, str]]]] = None) -> str:
     out = []
     for m in memos:
         allowed = ", ".join(_where(i) for i in sorted(allowed_blocks(blocks, m.block_index)))
-        lines = [f"- id: {m.id} ({'검수 지적' if m.source == 'review' else '사용자 메모'})",
+        lines = [f"- id: {m.id} ({MEMO_LABELS.get(m.source, '사용자 메모')})",
                  f"  위치: {_where(m.block_index)} / 고칠 수 있는 블록: {allowed}"]
         if m.quote.strip():
             lines.append(f"  드래그한 부분: \"{m.quote.strip()}\"")

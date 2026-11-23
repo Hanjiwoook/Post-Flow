@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend/providers/memo_logic.dart' show memosOf;
 import 'package:frontend/providers/post_provider.dart';
 import 'package:frontend/screens/review_screen.dart';
 import 'package:provider/provider.dart';
@@ -157,6 +158,31 @@ void main() {
     await tester.pumpWidget(const SizedBox()); // 화면 닫기
     await tester.pumpWidget(app()); // 다시 열기
     expect(find.widgetWithText(TextField, '잡내 없이 깔끔했어요'), findsOneWidget);
+  });
+
+  testWidgets('답을 쓰면 답 자리의 글에 질문 답 메모가 붙고, 자리가 없는 질문은 안내만 한다', (tester) async {
+    tester.view.physicalSize = const Size(1200, 4000);
+    addTearDown(tester.view.resetPhysicalSize);
+    final review = realReview();
+    (review['questions'] as List)[0]['block_index'] = 4; // 국물 질문 → 4번 글
+    final provider = PostProvider()..loadFromHistory({'title': '제목', 'blocks': blocks, 'review': review});
+    await tester.pumpWidget(ChangeNotifierProvider<PostProvider>.value(
+      value: provider,
+      child: const MaterialApp(home: ReviewScreen()),
+    ));
+    expect(find.textContaining('보라색 "질문 답" 메모로 붙어요'), findsOneWidget);
+    expect(find.textContaining('자동으로 붙지 않아요'), findsOneWidget); // 면 질문(자리 없음)
+
+    await tester.tap(find.text('잡내 없이 깔끔했어요'));
+    await tester.pump();
+    final answerMemos = memosOf(provider.generatedPost!).where((m) => m['source'] == 'answer').toList();
+    expect(answerMemos.length, 1);
+    expect(answerMemos.single['block_index'], 4);
+    expect(answerMemos.single['comment'], '질문: 국물은 어떤 맛이었나요?\n답: 잡내 없이 깔끔했어요');
+
+    await tester.enterText(find.widgetWithText(TextField, '잡내 없이 깔끔했어요'), '');
+    await tester.pump();
+    expect(memosOf(provider.generatedPost!).where((m) => m['source'] == 'answer'), isEmpty);
   });
 
   testWidgets('[검수 내용 편집하러 가기]를 누르면 편집 화면으로 돌아간다', (tester) async {

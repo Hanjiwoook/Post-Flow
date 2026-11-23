@@ -27,6 +27,8 @@ class ReviewQuestion(BaseModel):
     question: str = Field(description="사용자에게 할 짧은 질문")
     reason: str = Field(description="이 답이 있으면 글의 어디가 좋아지는지")
     example_answers: List[str] = Field(description="바로 고를 수 있는 짧은 답 2~4개")
+    block_index: int = Field(default=-2, description="답을 넣으면 가장 좋아지는 글 블록 번호 (reason이 말하는 곳). "
+                                                     "제목이면 -1, 넣을 만한 블록이 없으면 -2")
 
 
 class Review(BaseModel):

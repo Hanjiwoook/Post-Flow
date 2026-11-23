@@ -189,4 +189,78 @@ void main() {
     expect(editPlaceLabel(4, 6), '앞 글');
     expect(editPlaceLabel(9, 6), '뒤 글');
   });
+  group('검수 질문 답 → 메모', () {
+    final questions = [
+      {'question': '라멘 맛은?', 'block_index': 6},
+      {'question': '가게 분위기는?', 'block_index': 3}, // 사진 묶음 → 바로 뒤 글(4)
+      {'question': '동행은?', 'block_index': -2}, // 자리 없음
+      {'question': '예전 검수'}, // block_index 없음
+    ];
+    var n = 0;
+    String id() => 'a${n++}';
+    List<Map<String, dynamic>> sync(List<Map<String, dynamic>> memos, Map<String, String> answers) =>
+        syncAnswerMemos(memos, questions, answers, blocks(), id);
+
+    test('자리', () {
+      expect(answerTarget(questions[0], blocks()), 6);
+      expect(answerTarget(questions[1], blocks()), 4);
+      expect(answerTarget(questions[2], blocks()), isNull);
+      expect(answerTarget(questions[3], blocks()), isNull);
+    });
+
+    test('답을 쓰면 자리가 있는 질문만 메모가 생긴다', () {
+      final memos = sync([], {'라멘 맛은?': '국물이 진했어요', '동행은?': '친구랑', '예전 검수': '네'});
+      expect(memos.length, 1);
+      final m = memos.single;
+      expect(m['source'], 'answer');
+      expect(m['block_index'], 6);
+      expect(m['checked'], true);
+      expect(m['status'], 'draft');
+      expect(m['comment'], '질문: 라멘 맛은?\n답: 국물이 진했어요');
+    });
+
+    test('빈 답은 메모를 만들지 않는다', () {
+      expect(sync([], {'라멘 맛은?': '   '}), isEmpty);
+    });
+
+    test('같은 답이면 그대로, 답을 고치면 내용이 바뀐다', () {
+      final first = sync([], {'라멘 맛은?': '진했어요'});
+      expect(sync(first, {'라멘 맛은?': '진했어요'}), first);
+      final changed = sync(first, {'라멘 맛은?': '짭조름했어요'});
+      expect(changed.single['id'], first.single['id']);
+      expect(changed.single['comment'], '질문: 라멘 맛은?\n답: 짭조름했어요');
+    });
+
+    test('안을 받은 뒤 답을 고치면 안을 버리고 다시 보낼 메모가 된다', () {
+      final first = sync([], {'라멘 맛은?': '진했어요'});
+      final withProposal = [
+        {...first.single, 'status': 'proposed', 'proposal': {'edits': [], 'opinion': 'ok', 'notes': []}}
+      ];
+      final m = sync(withProposal, {'라멘 맛은?': '짭조름했어요'}).single;
+      expect(m['status'], 'draft');
+      expect(m['proposal'], isNull);
+    });
+
+    test('답을 지우면 반영 전 메모는 빠지고, 승인·거절한 메모와 다른 메모는 남는다', () {
+      final first = sync([], {'라멘 맛은?': '진했어요', '가게 분위기는?': '아늑해요'});
+      final approved = {...first[1], 'status': 'approved'};
+      final mine = newMemo(id: 'u1', blockIndex: 0, comment: '인사 줄여 줘');
+      final review = newMemo(id: 'r1', blockIndex: 6, comment: '맛 표현', source: 'review');
+      final after = sync([first[0], approved, mine, review], {});
+      expect(after.map((m) => m['id']), [approved['id'], 'u1', 'r1']);
+    });
+
+    test('승인한 질문에 다시 답하면 새 메모가 생긴다', () {
+      final approved = {...sync([], {'라멘 맛은?': '진했어요'}).single, 'status': 'approved'};
+      final after = sync([approved], {'라멘 맛은?': '짭조름했어요'});
+      expect(after.length, 2);
+      expect(after[0], approved);
+      expect(after[1]['status'], 'draft');
+    });
+
+    test('서버로 보낼 때 source가 answer로 간다', () {
+      final m = sync([], {'라멘 맛은?': '진했어요'}).single;
+      expect(memoPayload(m)['source'], 'answer');
+    });
+  });
 }

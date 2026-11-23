@@ -1,7 +1,8 @@
 // 메모로 부분 고치기: 메모 목록을 다루는 규칙 (화면·서버와 나눠서 flutter test로 확인한다).
 //
 // 메모 하나 (Map):
-//   id, block_index(제목이면 -1), quote(드래그한 부분), comment, source('user' | 'review'), kind(검수 지적 종류),
+//   id, block_index(제목이면 -1), quote(드래그한 부분), comment, source('user' | 'review' | 'answer'), kind(검수 지적 종류),
+//   question·answer('answer' 메모만: 어느 검수 질문에 무엇이라 답했는지),
 //   checked(AI에게 보낼지), status, proposal({edits: [{block_index, before, after}], opinion, notes}), thread([{role, text}])
 // status: 'draft'(보낼 메모) → 'proposed'(안 받음) → 'approved' | 'rejected'
 //
@@ -93,6 +94,62 @@ List<Map<String, dynamic>> mergeReviewMemos(List<Map<String, dynamic>> existing,
 
   final keptKeys = kept.where((m) => m['source'] == 'review').map(keyOf).toSet();
   return [...kept, ...fromReview.where((m) => !keptKeys.contains(keyOf(m)))];
+}
+
+/// 검수 질문이 답을 넣을 글 블록. 자리가 없거나(-2, 예전 검수) 넣을 수 없는 블록이면 null.
+int? answerTarget(Map question, List<dynamic> blocks) =>
+    memoTargetForIssue(question['block_index'] is int ? question['block_index'] as int : -2, blocks);
+
+String answerMemoComment(String question, String answer) => '질문: $question\n답: $answer';
+
+/// 검수 질문 답 → '질문 답' 메모(source 'answer'). 답 칸을 고칠 때마다 맞춘다.
+///   답을 쓰고 자리가 있으면 그 블록에 메모를 단다 (처음부터 체크).
+///   답을 고치면 메모 내용을 바꾸고, 이미 안을 받았으면 안을 버리고 다시 보낼 메모로 되돌린다.
+///   답을 지우면 아직 반영하지 않은 메모(draft·proposed)는 지운다.
+///   승인·거절한 메모는 건드리지 않는다 (같은 질문에 다시 답하면 새 메모가 생긴다).
+/// answers: {질문: 답}. newId: 새 메모 번호를 만든다.
+List<Map<String, dynamic>> syncAnswerMemos(
+  List<Map<String, dynamic>> memos,
+  List<dynamic> questions,
+  Map<String, String> answers,
+  List<dynamic> blocks,
+  String Function() newId,
+) {
+  bool active(Map m) => m['source'] == 'answer' && (m['status'] == 'draft' || m['status'] == 'proposed');
+  final wanted = <String, MapEntry<int, String>>{}; // 질문 → (블록, 답)
+  for (final q in questions.whereType<Map>()) {
+    final question = '${q['question'] ?? ''}';
+    final answer = (answers[question] ?? '').trim();
+    final target = answerTarget(q, blocks);
+    if (answer.isNotEmpty && target != null) wanted[question] = MapEntry(target, answer);
+  }
+
+  final out = <Map<String, dynamic>>[];
+  final done = <String>{};
+  for (final m in memos) {
+    if (!active(m)) {
+      out.add(m);
+      continue;
+    }
+    final question = '${m['question'] ?? ''}';
+    final want = wanted[question];
+    if (want == null || done.contains(question)) continue; // 답을 지웠거나 같은 질문의 메모가 이미 있음
+    done.add(question);
+    if (m['answer'] == want.value) {
+      out.add(m);
+    } else {
+      out.add({...editMemoComment(m, answerMemoComment(question, want.value)), 'answer': want.value});
+    }
+  }
+  for (final e in wanted.entries) {
+    if (done.contains(e.key)) continue;
+    out.add({
+      ...newMemo(id: newId(), blockIndex: e.value.key, comment: answerMemoComment(e.key, e.value.value), source: 'answer'),
+      'question': e.key,
+      'answer': e.value.value,
+    });
+  }
+  return out;
 }
 
 /// 지적이 메모로 옮겨지지 않는 것(글 전체 등)만 남긴다. 검수 화면에 그대로 보여 준다.

@@ -135,6 +135,14 @@ class SuggestMemoEditsTest(unittest.IsolatedAsyncioTestCase):
                      "블로그 주인: 짜다는 말은 빼 줘", "답: 진했음", "[7] text"]:
             self.assertIn(part, prompt)
 
+    async def test_answer_memo_is_labeled(self):
+        m = Memo(id="q0", block_index=7, comment="질문: 국물은?\n답: 진했음", source="answer")
+        fake = FakeLLM(output())
+        await suggest_memo_edits(TITLE, BLOCKS, {}, IMAGES, [], [m], [], client=fake)
+        prompt = fake.calls[0]["content"][0]["text"]
+        self.assertIn("- id: q0 (질문 답)", prompt)
+        self.assertIn("'질문 답' 메모는", prompt)
+
     async def test_validates_each_proposal(self):
         memos = [Memo(id="a", block_index=7, comment="x"), Memo(id="b", block_index=-1, comment="y")]
         fake = FakeLLM(output(

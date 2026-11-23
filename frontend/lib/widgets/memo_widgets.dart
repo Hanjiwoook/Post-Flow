@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
 import '../providers/memo_logic.dart';
 
-/// 메모 색: 내 메모는 파랑, 검수 지적은 주황
-Color memoColor(Map memo) => memo['source'] == 'review' ? Colors.orange : Colors.blue;
+/// 메모 색: 내 메모는 파랑, 검수 지적은 주황, 검수 질문 답은 보라
+Color memoColor(Map memo) {
+  switch (memo['source']) {
+    case 'review':
+      return Colors.orange;
+    case 'answer':
+      return Colors.purple;
+    default:
+      return Colors.blue;
+  }
+}
 
 String memoLabel(Map memo) {
+  if (memo['source'] == 'answer') return '질문 답';
   if (memo['source'] != 'review') return '내 메모';
   final kind = '${memo['kind'] ?? ''}'.trim();
   return kind.isEmpty ? '검수 지적' : '검수 지적 · $kind';

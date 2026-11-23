@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/memo_logic.dart' show issuesNotAsMemo;
+import '../providers/memo_logic.dart' show answerTarget, issuesNotAsMemo;
 import '../providers/post_provider.dart';
 
 /// 검수 지적이 글의 어디인지 사람이 읽을 수 있게 만든다.
@@ -352,6 +352,14 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 border: OutlineInputBorder(),
               ),
               style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 6),
+            // 답이 글에 어떻게 들어가는지 알려 준다 (자리가 없으면 직접 메모를 달아야 한다)
+            Text(
+              answerTarget(q, List<dynamic>.from(provider.generatedPost?['blocks'] ?? [])) != null
+                  ? '답을 쓰면 편집 화면의 해당 글에 보라색 "질문 답" 메모로 붙어요'
+                  : '이 답은 글에 자동으로 붙지 않아요. 편집 화면에서 넣을 곳에 직접 메모를 달아 주세요',
+              style: TextStyle(fontSize: 12, color: Colors.purple[700]),
             ),
           ],
         ),

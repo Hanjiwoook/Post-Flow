@@ -101,6 +101,20 @@ class TestReviewPost(unittest.IsolatedAsyncioTestCase):
         await review_post("제목", BLOCKS, {}, IMAGES, [], client=fake)
         self.assertIn("quote에 그 부분을 글에서 그대로", fake.calls[0]["content"][0]["text"])
 
+    async def test_question_targets_out_of_range_become_no_place(self):
+        review = fake_review()
+        review.questions = [
+            ReviewQuestion(question="맛은?", reason="r", example_answers=["a"], block_index=4),    # 글 블록
+            ReviewQuestion(question="제목?", reason="r", example_answers=["a"], block_index=-1),   # 제목
+            ReviewQuestion(question="양은?", reason="r", example_answers=["a"], block_index=99),   # 글에 없는 번호
+            ReviewQuestion(question="동행?", reason="r", example_answers=["a"], block_index=-5),   # 이상한 번호
+            ReviewQuestion(question="기타?", reason="r", example_answers=["a"]),                   # 자리 없음(기본값)
+        ]
+        fake = FakeLLM(review)
+        result = await review_post("제목", BLOCKS, {}, IMAGES, [], client=fake)
+        self.assertEqual([q.block_index for q in result.questions], [4, -1, -2, -2, -2])
+        self.assertIn("답을 넣을 블록 번호(block_index)", fake.calls[0]["content"][0]["text"])
+
     async def test_questions_are_capped(self):
         result = await review_post("제목", BLOCKS, {}, IMAGES, [], client=FakeLLM(fake_review(n_questions=8)))
         self.assertEqual(len(result.questions), MAX_QUESTIONS)

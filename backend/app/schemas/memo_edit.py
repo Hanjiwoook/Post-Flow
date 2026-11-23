@@ -23,7 +23,7 @@ class Memo(BaseModel):
     block_index: int  # 메모를 단 text 블록 번호. 제목이면 -1
     quote: str = ""  # 드래그한 부분 (없으면 블록 전체에 대한 메모)
     comment: str
-    source: Literal["user", "review"] = "user"
+    source: Literal["user", "review", "answer"] = "user"  # answer: 검수 질문에 답한 것 (앱이 답 자리에 붙임)
     kind: str = ""  # 검수 지적 종류 (사실, 말투, 맛 …). '사실'이면 앞 사진을 같이 보낸다
     thread: List[MemoTurn] = []  # 답장해서 다시 요청할 때 주고받은 내용
 

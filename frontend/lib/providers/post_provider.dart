@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
@@ -392,11 +393,28 @@ class PostProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  /// 검수 화면에서 쓴 질문 답. 메모 고치기의 사실 근거로 같이 보낸다.
+  /// 검수 화면에서 쓴 질문 답. 메모 고치기의 사실 근거로 같이 보내고,
+  /// 답을 넣을 자리가 있는 질문은 그 글에 '질문 답' 메모로 단다.
   void setReviewAnswers(List<Map<String, String>> answers) {
-    if (_generatedPost == null) return;
-    _generatedPost!['review_answers'] = answers;
-    _scheduleSave(); // 답 칸을 고칠 때마다 화면을 다시 그릴 필요는 없어서 알림 없이 저장만 예약한다
+    final post = _generatedPost;
+    if (post == null) return;
+    post['review_answers'] = answers;
+    final before = memosOf(post);
+    final after = syncAnswerMemos(
+      before,
+      List<dynamic>.from((review ?? {})['questions'] ?? []),
+      {for (final a in answers) a['question'] ?? '': a['answer'] ?? ''},
+      List<dynamic>.from(post['blocks'] ?? []),
+      // 저장본을 다시 열어도 앞의 메모 번호와 겹치지 않게 시각을 붙인다
+      () => 'a${DateTime.now().microsecondsSinceEpoch}_${++_memoSeq}',
+    );
+    post['memos'] = after;
+    // 메모가 바뀌었을 때만 화면을 다시 그린다. 답만 바뀌었으면 저장만 예약한다.
+    if (jsonEncode(before) != jsonEncode(after)) {
+      notifyListeners();
+    } else {
+      _scheduleSave();
+    }
   }
 
   /// [AI에게 확인]: 체크한 메모(또는 ids로 고른 메모)를 보내 안을 받는다. 실패하면 Exception.

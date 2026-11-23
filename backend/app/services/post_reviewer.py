@@ -57,6 +57,8 @@ GUIDE = f"""\
 - [사실 목록]에 없는 정보로만 보강할 수 있는 부분(맛, 식감, 양, 동행, 재방문 의사 등)은
   지어내라고 하지 말고 questions로 사용자에게 묻는다. 질문은 최대 {MAX_QUESTIONS}개, 효과가 큰 순서로.
 - 질문마다 바로 고를 수 있는 짧은 답 예시(example_answers)를 2~4개 붙인다.
+- 질문마다 답을 넣을 블록 번호(block_index)를 적는다. 사진 묶음이 아니라 그 답이 들어갈 글(text) 블록을 고른다.
+  앱이 그 블록에 답을 메모로 붙이고, 사용자가 확인하면 그 블록에 답을 넣는다.
 - [사실 목록]으로 이미 답할 수 있는 것은 묻지 않는다.
 - [코드 규칙 검사]에서 실패한 항목은 issues에 반영한다.
 - 칭찬만 하지 않는다. 고칠 것이 없으면 needs_revision을 false로 한다.
@@ -97,6 +99,15 @@ def verify_quotes(review: Review, title: str, blocks: List[ContentBlock]) -> Rev
     return review.model_copy(update={"issues": issues})
 
 
+def verify_question_targets(review: Review, blocks: List[ContentBlock]) -> Review:
+    """질문의 답 자리(block_index)가 글에 없는 번호면 -2(자리 없음)로 바꾼다 (앱이 엉뚱한 곳에 메모를 달지 않도록)."""
+    questions = [
+        q if q.block_index == -1 or 0 <= q.block_index < len(blocks) else q.model_copy(update={"block_index": -2})
+        for q in review.questions
+    ]
+    return review.model_copy(update={"questions": questions})
+
+
 def render_failed_checks(report) -> str:
     failed = [f"- {r.severity} {r.rule}: {r.detail}" for r in report.results if not r.passed]
     return "\n".join(failed) if failed else "- 모두 통과"
@@ -124,7 +135,7 @@ async def review_post(
     print(f"\n🧐 [Reviewer] 초안 검수 시작 (블록 {len(blocks)}개)")
     # 검수는 읽고 평가하는 일이라 effort를 낮춘다. high에서는 생각 토큰이 한도(16,000)를 넘어 응답이 끊겼다 (11/13).
     result = await client.parse("reviewer", [text_block(prompt)], Review, system=SYSTEM, effort=REVIEW_EFFORT)
-    review: Review = verify_quotes(result.parsed, title, blocks)
+    review: Review = verify_question_targets(verify_quotes(result.parsed, title, blocks), blocks)
 
     return ReviewResult(
         **review.model_dump(exclude={"questions"}),

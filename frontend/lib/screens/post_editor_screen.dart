@@ -6,6 +6,7 @@ import '../providers/post_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/publish_result_dialog.dart';
 import '../widgets/memo_widgets.dart';
+import '../widgets/tag_editor.dart';
 import '../widgets/saved_draft_card.dart' show DraftSaveLabel;
 import '../widgets/writing_report_card.dart';
 import 'review_screen.dart';
@@ -663,6 +664,9 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                 "🚫 글에서 뺀 사진", "", null, null, layout.unplacedImages, layout.sections, provider,
                 unplaced: true,
               ),
+              const SizedBox(height: 20),
+              // 태그 (네이버 글 아래에 붙는 것)
+              TagEditor(tags: provider.tags, onChanged: provider.setTags),
               const SizedBox(height: 100),
             ],
           ),

@@ -215,6 +215,15 @@ class PostProvider with ChangeNotifier {
     _generatedPost!['title'] = title;
   }
 
+  List<String> get tags => List<String>.from(_generatedPost?['tags'] ?? const []);
+
+  /// 편집 화면에서 태그를 지우거나 더했을 때 (발행할 때 봇이 네이버 태그 칸에 넣는다)
+  void setTags(List<String> tags) {
+    if (_generatedPost == null) return;
+    _generatedPost!['tags'] = tags;
+    notifyListeners();
+  }
+
   // 특정 블록 삭제 기능 추가
   void removeBlock(int index) {
     if (_generatedPost == null || _generatedPost!['blocks'] == null) return;

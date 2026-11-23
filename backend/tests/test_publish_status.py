@@ -33,6 +33,7 @@ class FakeBot:
         self.on_step = None
 
     def publish(self, *args, **kwargs):
+        self.kwargs = kwargs
         if self.on_step:
             self.on_step("글 넣는 중 (1/3)")
         if self.raises:
@@ -50,7 +51,7 @@ class TestRunPublishJob(unittest.TestCase):
         self.post_id = post.id
         db.close()
 
-    def run_job(self, bot):
+    def run_job(self, bot, tags=None):
         from app.api.v1.endpoints import posts
         steps = []
         original_update = posts._update_post
@@ -63,11 +64,16 @@ class TestRunPublishJob(unittest.TestCase):
         with patch("app.db.session.SessionLocal", self.Session), \
                 patch.object(posts, "naver_automation_v2", bot), \
                 patch.object(posts, "_update_post", spy_update):
-            posts.run_publish_job(self.post_id, "제목", [], [], [], {}, "NAVER", None)
+            posts.run_publish_job(self.post_id, "제목", [], [], [], {}, "NAVER", None, tags=tags)
         db = self.Session()
         post = db.get(Post, self.post_id)
         db.close()
         return post, steps
+
+    def test_tags_go_to_bot(self):
+        bot = FakeBot(True)
+        self.run_job(bot, tags=["하남맛집", "초마"])
+        self.assertEqual(bot.kwargs.get("tags"), ["하남맛집", "초마"])
 
     def test_success_keeps_problems(self):
         # 자가 검사에 고칠 것이 있어도 임시저장은 됐으므로 성공 + 고칠 것 목록

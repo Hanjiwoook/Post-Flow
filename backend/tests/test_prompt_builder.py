@@ -106,6 +106,14 @@ class TestOptions(unittest.TestCase):
         self.assertIn("첫 글 블록(인사) 안에", prompt)
         self.assertNotIn("`내돈내산`을 한 번 쓴다", prompt)
 
+    def test_tag_rules(self):
+        prompt = build_writer_prompt(FACTS, PHOTOS)
+        self.assertIn("[태그]", prompt)
+        self.assertIn("최대 30개", prompt)
+        self.assertIn("`테스트식당`", prompt)
+        self.assertNotIn("`내돈내산`이 들어간 태그는 쓰지 않는다", prompt)
+        self.assertIn("`내돈내산`이 들어간 태그는 쓰지 않는다", build_writer_prompt(FACTS, PHOTOS, sponsored=True))
+
     def test_sponsored_overrides_paid(self):
         prompt = build_writer_prompt(FACTS, PHOTOS, paid_by_self=True, sponsored=True)
         self.assertIn("[협찬 표시]", prompt)

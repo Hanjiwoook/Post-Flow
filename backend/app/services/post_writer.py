@@ -18,7 +18,7 @@ from ..schemas.post import AnalyzeResult, ContentBlock, ExcludedImage, ImageInfo
 from .format_checker import check_post
 from .llm_client import LLMClient, image_block, llm, text_block
 from .photo_dedup import group_similar
-from .prompt_builder import build_writer_prompt
+from .prompt_builder import MAX_TAGS, build_writer_prompt
 
 
 # --- AI 응답 형식 ---
@@ -44,7 +44,7 @@ class ExcludedNote(BaseModel):
 class WrittenPost(BaseModel):
     title: str
     blocks: List[WriterBlock]
-    tags: List[str]
+    tags: List[str] = Field(description="블로그 태그. [태그] 규칙대로, # 없이 띄어쓰기 없이")
     photos: List[PhotoNote] = Field(description="모든 사진(쓴 사진과 뺀 사진 모두)의 분류와 설명")
     excluded_images: List[ExcludedNote]
     writing_notes: List[str]
@@ -61,6 +61,17 @@ PHOTO_REPORT_RULE = """\
 
 UNREPORTED_REASON = "AI가 사용 여부를 밝히지 않은 사진이에요"
 RECEIPT_REASON = "영수증 사진은 개인정보(카드번호 등) 때문에 올리지 않아요"
+
+
+def clean_tags(tags: List[str], sponsored: bool = False) -> List[str]:
+    """태그를 네이버에 넣을 모양으로: # 과 띄어쓰기 제거, 중복·빈 것 제거, 최대 MAX_TAGS개. 협찬 글이면 내돈내산 태그를 뺀다."""
+    out: List[str] = []
+    for tag in tags:
+        t = "".join(str(tag).replace("#", "").split())
+        if not t or t in out or (sponsored and "내돈내산" in t):
+            continue
+        out.append(t)
+    return out[:MAX_TAGS]
 
 
 def drop_receipts(blocks: List[WriterBlock], photos: List[PhotoNote]) -> Tuple[List[WriterBlock], List[int]]:
@@ -190,7 +201,7 @@ async def write_post(images: List[Image.Image], facts: Dict, client: LLMClient =
         title=post.title,
         content="",
         blocks=[ContentBlock(**b) for b in blocks],
-        tags=post.tags,
+        tags=clean_tags(post.tags, sponsored),
         facts=facts,
         images=[
             ImageInfo(

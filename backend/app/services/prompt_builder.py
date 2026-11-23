@@ -227,6 +227,22 @@ def build_title_rules(facts: Dict) -> str:
 - `내돈내산`은 [내돈내산 표시] 규칙에서 허용된 경우에만 쓴다. 협찬 글에는 쓰지 않는다."""
 
 
+MAX_TAGS = 30  # 네이버 글 하나에 붙일 수 있는 태그 수
+
+
+def build_tag_rules(facts: Dict, sponsored: bool = False) -> str:
+    """블로그 태그. 블로그 주인 글(11/23 RSS, 글마다 17~30개)의 조합 방식을 따른다."""
+    place = _clean(facts.get("place_name")) or "가게 이름"
+    no_naedon = "\n- 협찬 글이므로 `내돈내산`이 들어간 태그는 쓰지 않는다." if sponsored else ""
+    return f"""\
+[태그] (tags 칸, 본문에는 쓰지 않는다)
+- 20개 안팎, 최대 {MAX_TAGS}개. 띄어쓰기 없이 붙여 쓰고 `#`은 붙이지 않는다.
+- 검색될 만한 조합을 고루 만든다:
+  지역(동·역·랜드마크) + `맛집`/`맛집추천`/`카페`/`놀거리`, 가게 이름(`{place}`)과 지역+가게 이름,
+  가게 이름 + 사실 목록에 있는 것(`웨이팅`, `주차`, `예약` 등), 먹은 메뉴 + `맛집`, 음식 종류(예: `중식맛집`).
+- 주소·사실 목록·사진에서 확인되는 것만 쓴다. 가 보지 않은 근처 가게나 없는 메뉴는 쓰지 않는다.{no_naedon}"""
+
+
 def build_style_samples(samples: List[str]) -> str:
     """말투 참고 문장. 원본 글의 일부만, 재사용 금지 경고와 함께 넣는다."""
     cleaned = []
@@ -274,6 +290,7 @@ def build_writer_prompt(
         build_disclosure_rules(paid_by_self, sponsored, _clean(sponsor_detail)),
         build_closing_rules(facts, closing_phrase),
         build_title_rules(facts),
+        build_tag_rules(facts, sponsored),
         NO_FABRICATION,
         f"[가게 정보 인용구]\n{info_quote}" if info_quote else "[가게 정보 인용구]\n(알려진 항목이 없다. 정보 인용구는 빼고 가게 이름 인용구와 지도만 쓴다)",
         f"[사실 목록]\n{build_fact_list(facts)}",

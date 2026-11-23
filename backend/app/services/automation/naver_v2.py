@@ -223,6 +223,55 @@ class NaverBlogAutomationV2:
                 pass
             return False
 
+    def _publish_layer_open(self, frame) -> bool:
+        try:
+            return frame.locator("#tag-input").first.is_visible()
+        except Exception:
+            return False
+
+    def _insert_tags(self, page, frame, tags: list) -> list:
+        """발행 창의 태그 칸(#tag-input)에 태그를 넣고, 발행하지 않고 창을 닫는다. 넣지 못한 것은 problems로 돌려준다.
+
+        11/23 조사(local_runs/2026-11-23/tag_probe_*.py): 태그는 본문이 아니라 위쪽 [발행]을 눌러야 나오는 창에 있다.
+        창을 닫고 [저장](임시저장)해도 태그가 남는 것을 임시저장 글을 다시 불러와 확인했다.
+        창이 열리면 어두운 막이 위쪽 버튼을 가려서 locator 클릭이 안 되므로, 닫을 때는 마우스로 버튼 자리를 누른다.
+        ⚠️ 창 안의 최종 [발행](confirm_btn)은 절대 누르지 않는다.
+        """
+        if not tags:
+            return []
+        problems = []
+        try:
+            open_btn = frame.locator("button[class*='publish_btn']").first
+            open_btn.click()
+            time.sleep(2)
+            if not self._publish_layer_open(frame):
+                return ["태그를 넣지 못했습니다 (발행 창이 열리지 않음). 발행할 때 앱의 [태그 복사]로 붙여 넣어 주세요"]
+            frame.locator("#tag-input").first.click()
+            for tag in tags:
+                page.keyboard.type(tag, delay=30)
+                page.keyboard.press("Enter")
+                time.sleep(0.3)
+            entered = [el.get_attribute("aria-label") for el in frame.locator("span[id^='tag-item-']").all()]
+            missing = [t for t in tags if t not in entered]
+            if missing:
+                problems.append(f"태그 {len(missing)}개를 넣지 못했습니다: {', '.join(missing[:5])}")
+            print(f"   🏷️ 태그 {len(entered)}개 넣음")
+        except Exception as e:
+            problems.append(f"태그를 넣다가 멈췄습니다: {str(e).splitlines()[0] if str(e) else type(e).__name__}")
+        finally:
+            # 창 닫기: 위쪽 [발행] 버튼 자리를 마우스로 누른다 (창이 남아 있으면 저장 버튼도 가려진다)
+            try:
+                if self._publish_layer_open(frame):
+                    box = frame.locator("button[class*='publish_btn']").first.bounding_box()
+                    if box:
+                        page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+                        time.sleep(2)
+                if self._publish_layer_open(frame):
+                    problems.append("발행 창이 닫히지 않았습니다")
+            except Exception:
+                pass
+        return problems
+
     def safe_hide_overlays(self, frame):
         """도움말 및 마스크 강제 제거"""
         try:
@@ -241,13 +290,13 @@ class NaverBlogAutomationV2:
         except: pass
 
     def publish(self, title: str, blocks: list, image_paths: list[str] = [], images_data: list = [], facts: dict = {},
-                max_retries: int = 3, save: bool = True) -> bool:
+                max_retries: int = 3, save: bool = True, tags: list = None) -> bool:
         """save=False면 저장 버튼을 누르지 않는다 (시험 모드: 편집기 HTML만 debug 파일로 남기고 닫는다)."""
         for attempt in range(max_retries):
             if attempt > 0:
                 self._step(f"다시 시도하는 중 ({attempt + 1}/{max_retries})")
             print(f"🔄 [V2 봇 안정화] 네이버 자동 발행 시작 (시도 {attempt + 1}/{max_retries})")
-            success = self._execute_publish(title, blocks, image_paths, images_data, facts, save=save)
+            success = self._execute_publish(title, blocks, image_paths, images_data, facts, save=save, tags=tags)
             if success:
                 return True
             if self.login_required:
@@ -261,7 +310,7 @@ class NaverBlogAutomationV2:
         return False
 
     def _execute_publish(self, title: str, blocks: list, image_paths: list[str] = [], images_data: list = [], facts: dict = {},
-                         save: bool = True) -> bool:
+                         save: bool = True, tags: list = None) -> bool:
         print(f"🚀 [V2 인플루언서 콜라주 모드] Starting - Title: {title}")
         self.last_problems = []
         self.login_required = False
@@ -437,6 +486,14 @@ class NaverBlogAutomationV2:
                     print("=" * 60)
                 else:
                     print("✅ 저장 전 자가 검사 통과: 블록 순서·줄·빈 줄·정렬·글씨 크기·사진·지도 모두 초안과 같습니다")
+
+                # 9-1. 태그 (11/23): 발행 창에 넣고 발행하지 않고 닫는다. 실패해도 임시저장은 한다.
+                if tags:
+                    self._step("태그 넣는 중")
+                    tag_problems = self._insert_tags(page, frame, tags)
+                    self.last_problems += tag_problems
+                    for tp in tag_problems:
+                        print(f"   ⚠️ {tp}")
 
                 # 10. Save
                 self._step("임시저장 중")

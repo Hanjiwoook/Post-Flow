@@ -15,7 +15,7 @@ from PIL import Image
 from app.services.llm_client import LLMError, LLMResult
 from app.services.post_writer import (
     PHOTO_REPORT_RULE, RECEIPT_REASON, UNREPORTED_REASON, ExcludedNote, PhotoNote, WriterBlock, WrittenPost,
-    drop_receipts, sanitize_images, write_post,
+    clean_tags, drop_receipts, sanitize_images, write_post,
 )
 
 
@@ -239,6 +239,18 @@ class TestAnalyzeEndpoint(unittest.TestCase):
         self.assertTrue(body["success"], body)
         self.assertTrue(body["data"]["images"][0]["path"].endswith(".jpg"))
         self.assertEqual(body["data"]["facts"], {"place_name": "테스트식당"})
+
+
+class CleanTagsTest(unittest.TestCase):
+    def test_shape_for_naver(self):
+        self.assertEqual(clean_tags(["#하남 맛집", "하남맛집", " ", "초마", "#초마"]), ["하남맛집", "초마"])
+
+    def test_max_30(self):
+        self.assertEqual(len(clean_tags([f"태그{i}" for i in range(40)])), 30)
+
+    def test_sponsored_drops_naedon(self):
+        self.assertEqual(clean_tags(["하남맛집", "하남내돈내산"], sponsored=True), ["하남맛집"])
+        self.assertEqual(clean_tags(["하남내돈내산"]), ["하남내돈내산"])
 
 
 if __name__ == "__main__":

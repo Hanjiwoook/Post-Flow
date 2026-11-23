@@ -221,7 +221,8 @@ def _update_post(post_id: int, **fields):
 
 # 실제 발행을 수행하는 백그라운드 함수
 # 6-4 (11/19): 결과(성공/실패, 실패 이유, 자가 검사 '고칠 것')와 진행 단계를 DB에 적어 앱이 볼 수 있게 한다.
-def run_publish_job(post_id: int, title: str, blocks: list, image_paths: List[str], images_data: list, facts: dict, platform: str, db_session: Session):
+def run_publish_job(post_id: int, title: str, blocks: list, image_paths: List[str], images_data: list, facts: dict, platform: str, db_session: Session,
+                    tags: Optional[List[str]] = None):
     success = False
     post_url = None
     error_code = None
@@ -234,7 +235,7 @@ def run_publish_job(post_id: int, title: str, blocks: list, image_paths: List[st
             bot.on_step = lambda text: _update_post(post_id, step=text)
             try:
                 # 네이버 발행 (블록 방식 + 이미지 카테고리 + 팩트 정보 적용)
-                success = bot.publish(title, blocks, image_paths, images_data, facts)
+                success = bot.publish(title, blocks, image_paths, images_data, facts, tags=tags)
             finally:
                 bot.on_step = None
             problems = list(bot.last_problems)
@@ -300,7 +301,8 @@ async def publish_post(
             [img.dict() for img in request.images], 
             request.facts, # 팩트 정보 전달 (지도 검색용)
             platform,
-            db
+            db,
+            tags=request.tags,  # 네이버 발행 창의 태그 칸에 넣는다 (11/23)
         )
     
     return CommonResponse(

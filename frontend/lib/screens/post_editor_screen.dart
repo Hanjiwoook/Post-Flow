@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../providers/memo_logic.dart' show titleIndex, staleBlocks;
 import '../providers/post_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/publish_result_dialog.dart';
+import '../widgets/memo_widgets.dart';
 import '../widgets/writing_report_card.dart';
 import 'review_screen.dart';
 
@@ -119,39 +121,21 @@ class PostEditorScreen extends StatefulWidget {
 }
 
 class _PostEditorScreenState extends State<PostEditorScreen> {
-  late TextEditingController _titleController;
-  final List<String> _selectedPlatforms = ['naver']; 
+  late HighlightTextController _titleController;
+  final List<String> _selectedPlatforms = ['naver'];
+  final Set<int> _showDoneMemos = {}; // 끝난 메모(승인·거절)를 펼쳐 둔 블록 
 
   @override
   void initState() {
     super.initState();
     final provider = Provider.of<PostProvider>(context, listen: false);
-    _titleController = TextEditingController(text: provider.generatedPost?['title'] ?? '');
+    _titleController = HighlightTextController(text: provider.generatedPost?['title'] ?? '');
   }
 
   @override
   void dispose() {
     _titleController.dispose();
     super.dispose();
-  }
-
-  Widget _buildFactRow(String label, String value) {
-    if (value.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87)),
-          ),
-          Expanded(
-            child: Text(value, style: const TextStyle(fontSize: 13, color: Colors.indigo)),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<bool?> _showMoveMenu(BuildContext context, int imageIndex, List<EditorSection> sections, PostProvider provider) {
@@ -255,14 +239,6 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
       ),
     );
   }
-  Widget _buildInsightChip(String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: color.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.5))),
-      child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
-    );
-  }
-
   // 통합 섹션 카드 빌더
   // [unplaced] true면 "배치 안 된 사진" 카드 (글·삭제 버튼 없음)
   Widget _buildSectionItem(String sectionTitle, String sectionText, int? textBlockIndex, int? imageBlockIndex, List<int> sectionImages, List<EditorSection> allSections, PostProvider provider, {bool unplaced = false}) {
@@ -271,6 +247,10 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     // 고쳐쓰기(6-3)에서 바뀐 글은 초록 테두리로 표시한다
     final edited = List<dynamic>.from(provider.generatedPost?['edited_blocks'] ?? []);
     final wasEdited = textBlockIndex != null && edited.contains(textBlockIndex);
+    // 메모는 글(text) 블록에만 단다. 인용구(가게 이름·정보)는 고치지 않는다
+    final blocks = List<dynamic>.from(provider.generatedPost?['blocks'] ?? []);
+    final memoable = !unplaced && textBlockIndex != null && textBlockIndex < blocks.length &&
+        ((blocks[textBlockIndex] as Map)['type'] ?? 'text') == 'text';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -304,6 +284,12 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                       ),
                   ],
                 ),
+                if (memoable) IconButton(
+                  tooltip: '메모 남기기 (글을 드래그한 뒤 우클릭해도 돼요)',
+                  icon: const Icon(Icons.sticky_note_2_outlined, size: 18, color: Colors.blue),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => _addMemo(provider, textBlockIndex),
+                ),
                 // 섹션 삭제 버튼 추가
                 if (!unplaced) IconButton(
                   icon: const Icon(Icons.delete_outline, size: 18, color: Colors.redAccent),
@@ -313,7 +299,10 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                       context: context,
                       builder: (context) => AlertDialog(
                         title: const Text("섹션 삭제"),
-                        content: Text("'$sectionTitle' 섹션을 정말 삭제하시겠습니까?\n글과 이미지가 모두 제거됩니다."),
+                        // 실제 동작대로 안내한다 (11/12 발견: 예전 문구는 사진도 지워진다고 했지만 사진은 '글에서 뺀 사진'으로 간다)
+                        content: Text("'$sectionTitle' 섹션의 글을 지울까요?\n"
+                            "사진은 지워지지 않고 아래 '글에서 뺀 사진'으로 옮겨져요. 그대로 두면 네이버에 올라가지 않고, [다시 넣기]로 되돌릴 수 있어요.\n"
+                            "이 글에 단 메모도 함께 지워져요."),
                         actions: [
                           TextButton(onPressed: () => Navigator.pop(context), child: const Text("취소")),
                           TextButton(
@@ -371,16 +360,24 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                   style: TextStyle(fontSize: 12, color: Colors.black54)),
             )
           else if (textBlockIndex != null)
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: TextFormField(
-                key: Key('$textBlockIndex-$sectionText'),
-                initialValue: sectionText,
-                maxLines: null,
-                decoration: const InputDecoration(border: InputBorder.none, isDense: true),
-                style: const TextStyle(fontSize: 15, height: 1.5),
-                onChanged: (val) { provider.generatedPost!['blocks'][textBlockIndex]['value'] = val; },
+            // 넓은 화면이면 글 | 메모를 나란히 (메모가 어느 글 것인지 바로 보이게)
+            textWithMemoSide(
+              text: Padding(
+                padding: const EdgeInsets.all(12),
+                child: MemoTextField(
+                  key: Key('text-$textBlockIndex'),
+                  value: sectionText,
+                  highlights: memoable ? _highlightsFor(provider, textBlockIndex) : const [],
+                  onChanged: (val) {
+                    provider.generatedPost!['blocks'][textBlockIndex]['value'] = val;
+                    provider.markEdited(); // 직접 고친 글도 자동 저장
+                  },
+                  contextMenuBuilder: memoable
+                      ? (context, state) => memoContextMenu(context, state, (quote) => _addMemo(provider, textBlockIndex, quote: quote))
+                      : null,
+                ),
               ),
+              memos: memoable ? _buildMemoList(provider, textBlockIndex) : const SizedBox.shrink(),
             ),
         ],
       ),
@@ -432,6 +429,117 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     }).toList();
   }
 
+  // ---------------- 메모 ----------------
+
+  Future<void> _addMemo(PostProvider provider, int blockIndex, {String quote = ''}) async {
+    final comment = await showMemoDialog(context, quote: quote);
+    if (comment != null && comment.isNotEmpty) provider.addMemo(blockIndex, comment, quote: quote);
+  }
+
+  Future<void> _editMemo(PostProvider provider, Map memo) async {
+    final comment = await showMemoDialog(context, initial: '${memo['comment'] ?? ''}', quote: '${memo['quote'] ?? ''}');
+    if (comment != null && comment.isNotEmpty) provider.editMemo('${memo['id']}', comment);
+  }
+
+  // [AI에게 확인]: 체크한 메모를 보낸다. 제목 칸에서 고친 제목도 같이 보낸다.
+  Future<void> _askMemos(PostProvider provider) async {
+    provider.updateTitle(_titleController.text);
+    try {
+      await provider.requestMemoEdits();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('고친 안 받기 실패: $e')));
+    }
+  }
+
+  void _approveMemo(PostProvider provider, String id) {
+    provider.updateTitle(_titleController.text); // 제목 칸에서 직접 고친 것도 '바뀐 글'로 본다
+    try {
+      provider.approveMemoProposal(id);
+      _titleController.text = provider.generatedPost?['title'] ?? '';
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'.replaceFirst('Exception: ', ''))));
+    }
+  }
+
+  Future<void> _replyMemo(PostProvider provider, String id) async {
+    final reply = await showMemoDialog(context, title: '답장해서 다시 요청', hint: '예: 앞 문장은 원래대로 둬 줘');
+    if (reply == null || reply.isEmpty) return;
+    provider.updateTitle(_titleController.text);
+    try {
+      await provider.replyAndRetry(id, reply);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('고친 안 받기 실패: $e')));
+    }
+  }
+
+  // 글 안에 칠할 부분: 아직 끝나지 않은 메모의 드래그한 글자
+  List<MapEntry<String, Color>> _highlightsFor(PostProvider provider, int blockIndex) {
+    return provider.memos
+        .where((m) => m['block_index'] == blockIndex && m['status'] != 'approved' && m['status'] != 'rejected')
+        .map((m) => MapEntry('${m['quote'] ?? ''}'.trim(), memoColor(m)))
+        .where((e) => e.key.isNotEmpty)
+        .toList();
+  }
+
+  // 블록에 단 메모 목록 (제목은 -1)
+  Widget _buildMemoList(PostProvider provider, int blockIndex) {
+    final all = provider.memos.where((m) => m['block_index'] == blockIndex).toList();
+    if (all.isEmpty) return const SizedBox.shrink();
+    // 승인·거절한 메모는 접어 두고 남은 할 일만 보인다
+    bool isDone(Map m) => m['status'] == 'approved' || m['status'] == 'rejected';
+    final done = all.where(isDone).length;
+    final showDone = _showDoneMemos.contains(blockIndex);
+    final memos = showDone ? all : all.where((m) => !isDone(m)).toList();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ...memos.map((m) {
+          final id = '${m['id']}';
+          final inFlight = provider.isMemoInFlight(id);
+          Widget? below;
+          if (inFlight) {
+            below = const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Row(children: [
+                SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(width: 8),
+                Text('AI가 고친 안을 만드는 중이에요', style: TextStyle(fontSize: 14, color: Colors.black54)),
+              ]),
+            );
+          } else if (m['status'] == 'proposed' && m['proposal'] is Map) {
+            below = ProposalView(
+              memo: m,
+              stale: staleBlocks(provider.generatedPost!, m),
+              onApprove: () => _approveMemo(provider, id),
+              onReject: () => provider.rejectMemo(id),
+              onReply: () => _replyMemo(provider, id),
+            );
+          }
+          return MemoTile(
+            key: ValueKey(id),
+            memo: m,
+            onChecked: inFlight ? null : (v) => provider.toggleMemo(id, v),
+            onEdit: inFlight ? null : () => _editMemo(provider, m),
+            onDelete: inFlight ? null : () => provider.deleteMemo(id),
+            child: below,
+          );
+          }),
+          if (done > 0)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => setState(() => showDone ? _showDoneMemos.remove(blockIndex) : _showDoneMemos.add(blockIndex)),
+                icon: Icon(showDone ? Icons.expand_less : Icons.expand_more, size: 20),
+                label: Text(showDone ? '끝난 메모 접기' : '끝난 메모 $done개 보기', style: const TextStyle(fontSize: 14)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // 검수(6-3): 결과가 없으면 먼저 검수를 받고, 검수 화면을 연다. 고쳐 쓰고 돌아오면 제목 칸도 바꾼다.
   Future<void> _openReview(PostProvider provider) async {
     provider.updateTitle(_titleController.text); // 편집 화면에서 고친 제목도 검수 받는다
@@ -469,69 +577,6 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     );
   }
 
-  void _showEditInfoModal(BuildContext context, PostProvider provider) {
-    final facts = provider.generatedPost?['facts'] ?? {};
-    final Map<String, TextEditingController> controllers = {
-      'ordered_menu': TextEditingController(text: facts['ordered_menu'] ?? ''),
-      'parking': TextEditingController(text: facts['parking'] ?? ''),
-      'business_hours': TextEditingController(text: facts['business_hours'] ?? ''),
-      'address': TextEditingController(text: facts['address'] ?? ''),
-      'phone': TextEditingController(text: facts['phone'] ?? ''),
-      'waiting': TextEditingController(text: facts['waiting'] ?? ''),
-    };
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("📍 매장 정보 수정", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                const SizedBox(height: 20),
-                _buildModalField("🍔 주문 메뉴", controllers['ordered_menu']!),
-                _buildModalField("🚗 주차 정보", controllers['parking']!),
-                _buildModalField("🕒 영업 시간", controllers['business_hours']!),
-                _buildModalField("🏠 주소", controllers['address']!),
-                _buildModalField("📞 전화번호", controllers['phone']!),
-                _buildModalField("⏳ 웨이팅/기타", controllers['waiting']!),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
-                    onPressed: () async {
-                      final Map<String, dynamic> newFacts = {};
-                      controllers.forEach((k, v) => newFacts[k] = v.text);
-                      Navigator.pop(context);
-                      await provider.updateFactsMultiple(newFacts);
-                      _titleController.text = provider.generatedPost?['title'] ?? '';
-                    },
-                    child: const Text("반영 및 재작성"),
-                  ),
-                ),
-                const SizedBox(height: 30),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildModalField(String label, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: TextField(controller: controller, decoration: InputDecoration(labelText: label, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)))),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<PostProvider>(context);
@@ -545,6 +590,20 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(title: const Text('AI 자동화 에디터'), actions: [
+        Builder(builder: (_) {
+          final pending = provider.memos.where((m) => m['checked'] == true && m['status'] == 'draft').length;
+          return TextButton.icon(
+            // 툴팁은 버튼이 잠겨 있어도 보인다 (메모가 없어서 못 누를 때 이유를 알 수 있게)
+            onPressed: pending == 0 || provider.isAskingMemos ? null : () => _askMemos(provider),
+            icon: const Icon(Icons.auto_fix_high),
+            label: Tooltip(
+              message: pending == 0
+                  ? '고치고 싶은 곳에 메모를 먼저 남겨 주세요 (글 드래그 → 우클릭 → 메모 남기기)'
+                  : '체크한 메모 $pending개를 AI에게 보내 메모마다 고친 안을 받아요. 승인하기 전에는 글이 바뀌지 않아요.',
+              child: Text(provider.isAskingMemos ? 'AI가 고치는 중…' : 'AI에게 확인 ($pending)'),
+            ),
+          );
+        }),
         TextButton.icon(
           onPressed: provider.isReviewing ? null : () => _openReview(provider),
           icon: const Icon(Icons.fact_check_outlined),
@@ -555,13 +614,41 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
       body: Stack(
         children: [
           ListView(
-            padding: const EdgeInsets.all(16),
+            // 큰 화면에서는 내용을 가운데 최대 폭(editorMaxWidth)으로 모은다 (글과 메모가 너무 멀어지지 않게)
+            padding: EdgeInsets.symmetric(
+              vertical: 16,
+              horizontal: ((MediaQuery.sizeOf(context).width - editorMaxWidth) / 2).clamp(16.0, double.infinity),
+            ),
             children: [
               // 작성 리포트: 형식 검사, '확인 필요' 메모, 비용 (6-1, 11/18)
               // 예전 'AI 분석 인사이트' 카드는 입력한 리뷰 요약을 다시 보여 줄 뿐이었다.
               WritingReportCard(post: post),
+              const SizedBox(height: 16),
+              MemoGuideBanner(pending: provider.memos.where((m) => m['checked'] == true && m['status'] == 'draft').length),
               const SizedBox(height: 20),
-              TextField(controller: _titleController, decoration: const InputDecoration(hintText: '제목', border: InputBorder.none), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              textWithMemoSide(
+                text: Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _titleController..highlights = _highlightsFor(provider, titleIndex),
+                      decoration: const InputDecoration(hintText: '제목', border: InputBorder.none),
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                      onChanged: (v) {
+                        provider.updateTitle(v);
+                        provider.markEdited();
+                      },
+                      contextMenuBuilder: (context, state) =>
+                          memoContextMenu(context, state, (quote) => _addMemo(provider, titleIndex, quote: quote)),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '제목에 메모 남기기',
+                    icon: const Icon(Icons.sticky_note_2_outlined, size: 20, color: Colors.blue),
+                    onPressed: () => _addMemo(provider, titleIndex),
+                  ),
+                ]),
+                memos: _buildMemoList(provider, titleIndex),
+              ),
               const Divider(height: 30),
 
               // 섹션 리스트: 블록 순서 그대로 (= 네이버에 발행되는 순서)

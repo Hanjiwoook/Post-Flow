@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/post_provider.dart';
+import 'services/draft_store.dart';
 import 'screens/home_screen.dart';
 
 void main() {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => PostProvider()),
+        ChangeNotifierProvider(create: (_) => PostProvider(store: DraftStore.windowsDefault())),
       ],
       child: const PostFlowApp(),
     ),

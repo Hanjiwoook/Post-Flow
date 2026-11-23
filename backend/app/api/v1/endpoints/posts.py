@@ -13,6 +13,8 @@ from ....services.post_reviewer import review_post
 from ....schemas.review import ReviewRequest, ReviewResult
 from ....services.post_reviser import revise_post
 from ....schemas.revise import ReviseRequest, ReviseResult
+from ....services.memo_editor import suggest_memo_edits
+from ....schemas.memo_edit import MemoEditRequest, MemoEditResult
 from ....services.automation.naver_v2 import naver_automation_v2
 from ....services.automation.tistory import tistory_automation
 from ....schemas.post import AnalyzeResult, ContentBlock, PostPublishRequest, JobResponse, PostResponse, PublishStatus, PatchRequest
@@ -134,6 +136,21 @@ async def revise_draft(request: ReviseRequest):
         return CommonResponse(success=False, message=str(e), error="LLM_ERROR")
     except Exception as e:
         return CommonResponse(success=False, message="고쳐쓰기 중 오류가 발생했습니다.", error=str(e))
+
+@router.post("/memo-edit", response_model=CommonResponse[MemoEditResult])
+async def memo_edit(request: MemoEditRequest):
+    """
+    메모로 부분 고치기: 메모마다 고친 안(원래 → 고친 글)과 의견을 돌려준다.
+    글은 바꾸지 않는다. 승인은 앱에서 하고, 승인할 때 AI를 다시 부르지 않는다.
+    """
+    try:
+        result = await suggest_memo_edits(request.title, request.blocks, request.facts, request.images,
+                                          request.writing_notes, request.memos, request.answers)
+        return CommonResponse(success=True, message="고친 안 완료", data=result)
+    except LLMError as e:
+        return CommonResponse(success=False, message=str(e), error="LLM_ERROR")
+    except Exception as e:
+        return CommonResponse(success=False, message="고친 안을 만드는 중 오류가 발생했습니다.", error=str(e))
 
 PLACE_INFO_MARK = "[매장 위치 & 정보]"
 

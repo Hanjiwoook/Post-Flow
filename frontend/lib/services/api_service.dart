@@ -195,4 +195,19 @@ class ApiService {
       'answers': answers,
     }, '고쳐쓰기 실패');
   }
+
+  // 9. 메모로 부분 고치기: 메모마다 고친 안과 의견을 받는다 (글은 바꾸지 않음, 승인은 앱에서)
+  static Future<Map<String, dynamic>> memoEdit(String title, List<dynamic> blocks, Map<String, dynamic> facts,
+      List<Map<String, dynamic>> memos,
+      {List<dynamic> images = const [], List<dynamic> writingNotes = const [], List<dynamic> answers = const []}) {
+    return _postJson('/posts/memo-edit', {
+      'title': title,
+      'blocks': blocks,
+      'facts': facts,
+      'images': images,
+      'writing_notes': writingNotes,
+      'memos': memos,
+      'answers': answers,
+    }, '고친 안 받기 실패');
+  }
 }

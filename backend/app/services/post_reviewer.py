@@ -53,6 +53,7 @@ GUIDE = f"""\
 
 [검수 규칙]
 - 글을 직접 다시 쓰지 않는다. 문제(issues)는 블록 번호와 함께 구체적으로 짚고, 고칠 방향을 적는다.
+- 문제가 블록의 일부 문장이면 quote에 그 부분을 글에서 그대로 옮겨 적는다 (앱이 글 안에 표시한다). 고쳐 쓴 문장을 넣지 않는다.
 - [사실 목록]에 없는 정보로만 보강할 수 있는 부분(맛, 식감, 양, 동행, 재방문 의사 등)은
   지어내라고 하지 말고 questions로 사용자에게 묻는다. 질문은 최대 {MAX_QUESTIONS}개, 효과가 큰 순서로.
 - 질문마다 바로 고를 수 있는 짧은 답 예시(example_answers)를 2~4개 붙인다.
@@ -79,6 +80,21 @@ def render_draft(title: str, blocks: List[ContentBlock], images: List[ImageInfo]
             style = f", {block.style}" if block.style else ""
             lines.append(f"[{i}] {block.type}{style}\n{block.value or ''}")
     return "\n".join(lines)
+
+
+def verify_quotes(review: Review, title: str, blocks: List[ContentBlock]) -> Review:
+    """지적의 quote가 실제 글에 없으면 비운다 (앱이 엉뚱한 곳을 칠하지 않도록)."""
+    issues = []
+    for it in review.issues:
+        q = it.quote.strip()
+        if it.block_index == -1:
+            source = title
+        elif 0 <= it.block_index < len(blocks):
+            source = blocks[it.block_index].value or ""
+        else:
+            source = ""
+        issues.append(it.model_copy(update={"quote": q if q and q in source else ""}))
+    return review.model_copy(update={"issues": issues})
 
 
 def render_failed_checks(report) -> str:
@@ -108,7 +124,7 @@ async def review_post(
     print(f"\n🧐 [Reviewer] 초안 검수 시작 (블록 {len(blocks)}개)")
     # 검수는 읽고 평가하는 일이라 effort를 낮춘다. high에서는 생각 토큰이 한도(16,000)를 넘어 응답이 끊겼다 (11/13).
     result = await client.parse("reviewer", [text_block(prompt)], Review, system=SYSTEM, effort=REVIEW_EFFORT)
-    review: Review = result.parsed
+    review: Review = verify_quotes(result.parsed, title, blocks)
 
     return ReviewResult(
         **review.model_dump(exclude={"questions"}),

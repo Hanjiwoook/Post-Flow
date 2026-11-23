@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../providers/post_provider.dart';
 import '../services/api_service.dart';
+import '../widgets/saved_draft_card.dart';
 import 'post_editor_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -434,6 +435,36 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 40),
             const Divider(),
             const SizedBox(height: 20),
+            // 앱을 끄기 전 작업하던 글 (자동 저장본)
+            Builder(builder: (context) {
+              final draft = provider.savedDraft;
+              if (draft == null) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: SavedDraftCard(
+                  draft: draft,
+                  onResume: () {
+                    if (provider.resumeSavedDraft()) {
+                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PostEditorScreen()));
+                    }
+                  },
+                  onDiscard: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (c) => AlertDialog(
+                        title: const Text('작업 중인 글 지우기'),
+                        content: const Text('저장해 둔 글과 메모를 지울까요? 되돌릴 수 없어요.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('취소')),
+                          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('지우기', style: TextStyle(color: Colors.red))),
+                        ],
+                      ),
+                    );
+                    if (ok == true) provider.discardSavedDraft();
+                  },
+                ),
+              );
+            }),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text("📜 최근 발행 이력", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), TextButton(onPressed: () => setState(() {}), child: const Text("새로고침"))]),
             const SizedBox(height: 10),
             

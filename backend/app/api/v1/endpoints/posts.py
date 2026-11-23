@@ -47,14 +47,17 @@ async def analyze_post(
         return CommonResponse(success=False, message="이미지는 최대 50장까지만 가능합니다.", error="TOO_MANY_IMAGES")
 
     try:
-        # initial_facts 파싱
+        # initial_facts 파싱. 깨진 가게 정보로 조용히 빈 글을 쓰지 않게, 읽지 못하면 사진을 저장하기 전에 멈춘다.
         facts_dict = {}
         if initial_facts:
             import json
             try:
                 facts_dict = json.loads(initial_facts)
-            except:
-                pass
+            except json.JSONDecodeError:
+                facts_dict = None
+            if not isinstance(facts_dict, dict):
+                return CommonResponse(success=False, message="가게 정보를 읽지 못했습니다. 앱을 다시 실행해 주세요.",
+                                      error="INVALID_FACTS")
 
         saved_image_paths = []
         pil_images = []

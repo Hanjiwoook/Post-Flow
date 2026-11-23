@@ -4,6 +4,7 @@ post_writer 단위 테스트. 실제 Claude API 대신 가짜 응답을 쓴다 (
 실행: cd backend → venv\\Scripts\\python -m unittest discover tests
 """
 import io
+import os
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -201,12 +202,23 @@ class TestAnalyzeEndpoint(unittest.TestCase):
         upload_patch.start()
         self.addCleanup(upload_patch.stop)
 
-    def _post(self):
+    def _post(self, initial_facts='{"place_name": "테스트식당"}'):
         buffer = io.BytesIO()
         img("red").save(buffer, format="JPEG")
         return self.client.post("/api/v1/posts/analyze",
                                 files=[("files", ("a.jpg", buffer.getvalue(), "image/jpeg"))],
-                                data={"initial_facts": '{"place_name": "테스트식당"}'})
+                                data={"initial_facts": initial_facts})
+
+    def test_broken_facts_stop_before_writing(self):
+        # 가게 정보가 깨지면 빈 정보로 글을 쓰지 않고, AI도 부르지 않고, 사진도 저장하지 않는다
+        async def must_not_call(images, facts):
+            raise AssertionError("write_post가 불리면 안 된다")
+        for broken in ['{"place_name": ', '["목록"]']:
+            with self.subTest(broken=broken), patch("app.api.v1.endpoints.posts.write_post", must_not_call):
+                body = self._post(broken).json()
+                self.assertFalse(body["success"])
+                self.assertEqual(body["error"], "INVALID_FACTS")
+        self.assertEqual(os.listdir(self.tmp.name), [])
 
     def test_llm_error_returns_korean_message(self):
         async def fail(images, facts):

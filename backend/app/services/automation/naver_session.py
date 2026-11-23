@@ -106,4 +106,9 @@ def save_login_session(timeout_sec: int = LOGIN_WAIT_SEC) -> bool:
 
 
 if __name__ == "__main__":
+    # Windows 기본 콘솔 인코딩(cp949)은 안내 문구의 이모지를 못 써서 UnicodeEncodeError로 멈춘다.
+    # -X utf8 없이 실행해도 되도록 출력 인코딩을 utf-8로 바꾸고, 못 쓰는 글자는 ?로 바꾼다.
+    import sys
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="replace")
     save_login_session()

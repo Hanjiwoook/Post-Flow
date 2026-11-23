@@ -255,20 +255,6 @@ class PostProvider with ChangeNotifier {
     return raw.whereType<num>().map((n) => n.toInt()).toList();
   }
 
-  // 이미지 카테고리 변경 기능 추가
-  void updateImageCategory(int index, String newCategory) {
-    if (_generatedPost == null || _generatedPost!['images'] == null) return;
-    
-    final images = List<dynamic>.from(_generatedPost!['images']);
-    if (index >= 0 && index < images.length) {
-      final img = Map<String, dynamic>.from(images[index]);
-      img['category'] = newCategory;
-      images[index] = img;
-      _generatedPost!['images'] = images;
-      notifyListeners();
-    }
-  }
-
   void updateContent(String content) {
     if (_generatedPost == null) return;
     _generatedPost!['content'] = content;
@@ -301,41 +287,6 @@ class PostProvider with ChangeNotifier {
       
     } catch (e) {
       print('Error patching fact: $e');
-    } finally {
-      _isRefining = false;
-      notifyListeners();
-    }
-  }
-
-  // 여러 팩트 정보를 한 번에 업데이트하고 부분 수정을 요청함
-  Future<void> updateFactsMultiple(Map<String, dynamic> newFacts) async {
-    if (_generatedPost == null) return;
-    
-    final facts = Map<String, dynamic>.from(_generatedPost!['facts'] ?? {});
-    newFacts.forEach((key, value) {
-      facts[key] = value;
-    });
-    _generatedPost!['facts'] = facts;
-    
-    _isRefining = true;
-    notifyListeners();
-    
-    try {
-      final images = List<dynamic>.from(_generatedPost!['images'] ?? []);
-      final blocks = List<dynamic>.from(_generatedPost!['blocks'] ?? []);
-      
-      final result = await ApiService.patchPost(
-        _generatedPost!['title'], 
-        blocks, 
-        facts, 
-        images: images,
-      );
-      
-      _generatedPost!['blocks'] = result['blocks'];
-      _generatedPost!['facts'] = result['facts'];
-      
-    } catch (e) {
-      print('Error patching multiple facts: $e');
     } finally {
       _isRefining = false;
       notifyListeners();
@@ -481,24 +432,6 @@ class PostProvider with ChangeNotifier {
     if (_generatedPost == null || reply.trim().isEmpty) return;
     _updateMemo(id, (m) => replyToMemo(m, reply));
     await requestMemoEdits(ids: [id]);
-  }
-
-  Map<String, List<Map<String, dynamic>>> getImagesByCategory() {
-    if (_generatedPost == null || _generatedPost!['images'] == null) return {};
-    
-    final Map<String, List<Map<String, dynamic>>> grouped = {};
-    final images = _generatedPost!['images'] as List<dynamic>;
-    
-    for (int i = 0; i < images.length; i++) {
-      final img = images[i] as Map<String, dynamic>;
-      final cat = img['category'] as String;
-      
-      grouped.putIfAbsent(cat, () => []).add({
-        'index': i,
-        'data': img,
-      });
-    }
-    return grouped;
   }
 
   // 발행 요청을 보내고, 결과 창(6-4)이 상태를 물어볼 발행 번호 목록을 돌려준다 (플랫폼마다 하나).

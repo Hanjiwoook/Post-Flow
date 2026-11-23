@@ -138,25 +138,6 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     super.dispose();
   }
 
-  Widget _buildFactRow(String label, String value) {
-    if (value.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 100,
-            child: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87)),
-          ),
-          Expanded(
-            child: Text(value, style: const TextStyle(fontSize: 13, color: Colors.indigo)),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<bool?> _showMoveMenu(BuildContext context, int imageIndex, List<EditorSection> sections, PostProvider provider) {
     return showModalBottomSheet<bool>(
       context: context,
@@ -258,14 +239,6 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
       ),
     );
   }
-  Widget _buildInsightChip(String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: color.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withOpacity(0.5))),
-      child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
-    );
-  }
-
   // 통합 섹션 카드 빌더
   // [unplaced] true면 "배치 안 된 사진" 카드 (글·삭제 버튼 없음)
   Widget _buildSectionItem(String sectionTitle, String sectionText, int? textBlockIndex, int? imageBlockIndex, List<int> sectionImages, List<EditorSection> allSections, PostProvider provider, {bool unplaced = false}) {
@@ -601,69 +574,6 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
       context: context,
       barrierDismissible: false,
       builder: (_) => PublishResultDialog(postIds: postIds, fetchStatus: ApiService.getPublishStatus),
-    );
-  }
-
-  void _showEditInfoModal(BuildContext context, PostProvider provider) {
-    final facts = provider.generatedPost?['facts'] ?? {};
-    final Map<String, TextEditingController> controllers = {
-      'ordered_menu': TextEditingController(text: facts['ordered_menu'] ?? ''),
-      'parking': TextEditingController(text: facts['parking'] ?? ''),
-      'business_hours': TextEditingController(text: facts['business_hours'] ?? ''),
-      'address': TextEditingController(text: facts['address'] ?? ''),
-      'phone': TextEditingController(text: facts['phone'] ?? ''),
-      'waiting': TextEditingController(text: facts['waiting'] ?? ''),
-    };
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("📍 매장 정보 수정", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                const SizedBox(height: 20),
-                _buildModalField("🍔 주문 메뉴", controllers['ordered_menu']!),
-                _buildModalField("🚗 주차 정보", controllers['parking']!),
-                _buildModalField("🕒 영업 시간", controllers['business_hours']!),
-                _buildModalField("🏠 주소", controllers['address']!),
-                _buildModalField("📞 전화번호", controllers['phone']!),
-                _buildModalField("⏳ 웨이팅/기타", controllers['waiting']!),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
-                    onPressed: () async {
-                      final Map<String, dynamic> newFacts = {};
-                      controllers.forEach((k, v) => newFacts[k] = v.text);
-                      Navigator.pop(context);
-                      await provider.updateFactsMultiple(newFacts);
-                      _titleController.text = provider.generatedPost?['title'] ?? '';
-                    },
-                    child: const Text("반영 및 재작성"),
-                  ),
-                ),
-                const SizedBox(height: 30),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildModalField(String label, TextEditingController controller) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: TextField(controller: controller, decoration: InputDecoration(labelText: label, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)))),
     );
   }
 

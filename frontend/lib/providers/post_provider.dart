@@ -15,11 +15,23 @@ List<int> parseJobIds(dynamic jobId) {
       .toList();
 }
 
+/// 자동 저장 한 번의 결과. error가 있으면 저장하지 못한 것이다.
+class DraftSaveState {
+  final DateTime at;
+  final String? error;
+  const DraftSaveState(this.at, {this.error});
+  bool get ok => error == null;
+}
+
 class PostProvider with ChangeNotifier {
   // 작업 중인 글을 노트북 파일에 자동 저장한다 (앱을 꺼도 [이어서 작업하기]). 테스트에서는 넣지 않거나 임시 폴더를 쓴다.
   PostProvider({DraftStore? store}) : _store = store;
   final DraftStore? _store;
   Timer? _saveTimer;
+
+  /// 마지막 자동 저장 결과 (편집 화면 위에 "자동 저장됨 14:32"로 보여 준다). 아직 저장 안 했으면 null.
+  /// 저장할 때마다 화면 전체를 다시 그리지 않도록 따로 알린다.
+  final ValueNotifier<DraftSaveState?> saveState = ValueNotifier(null);
 
   List<XFile> _selectedImages = [];
   bool _isLoading = false;
@@ -59,8 +71,12 @@ class PostProvider with ChangeNotifier {
   /// 글 칸에서 직접 고친 것처럼 알림 없이 바뀐 것도 저장하게 한다.
   void markEdited() => _scheduleSave();
 
+  // 지금 열린 글의 저장 번호. 글이 없거나 아직 번호가 없으면 저장하지 않는다.
+  String? _draftId;
+  String? get currentDraftId => _draftId;
+
   void _scheduleSave() {
-    if (_store == null || _generatedPost == null) return; // 글이 없을 때는 앞의 저장본을 지우지 않는다
+    if (_store == null || _generatedPost == null || _draftId == null) return; // 글이 없을 때는 저장하지 않는다
     _saveTimer?.cancel();
     _saveTimer = Timer(const Duration(milliseconds: 500), saveNow);
   }
@@ -68,78 +84,91 @@ class PostProvider with ChangeNotifier {
   void saveNow() {
     _saveTimer?.cancel();
     final post = _generatedPost;
-    if (_store == null || post == null) return;
+    final id = _draftId;
+    if (_store == null || post == null || id == null) return;
     try {
-      _store.save(post, _selectedImages.map((x) => x.path).toList());
+      _store.save(id, post, _selectedImages.map((x) => x.path).toList());
+      saveState.value = DraftSaveState(DateTime.now());
     } catch (e) {
       debugPrint('작업 중인 글 저장 실패: $e');
+      saveState.value = DraftSaveState(DateTime.now(), error: '$e');
     }
   }
 
-  /// 저장해 둔 글 (없으면 null). 홈 화면 [이어서 작업하기] 카드에 쓴다.
-  Map<String, dynamic>? get savedDraft => _store?.load();
+  /// 저장해 둔 글 전부, 최근 것부터. 홈 화면의 작업 중인 글 목록에 쓴다.
+  List<Map<String, dynamic>> get savedDrafts {
+    try {
+      return _store?.list() ?? [];
+    } catch (e) {
+      debugPrint('작업 중인 글 목록 읽기 실패: $e');
+      return [];
+    }
+  }
 
-  /// 저장해 둔 글을 연다. 없으면 false.
-  bool resumeSavedDraft() {
-    final data = _store?.load();
-    if (data == null) return false;
+  // 저장본을 열 때: 연 것만으로는 다시 저장하지 않는다 (목록 순서가 '마지막으로 고친 순'으로 남게)
+  void _open(String id, Map<String, dynamic> data) {
+    _draftId = id;
     _selectedImages = List<dynamic>.from(data['local_image_paths'] ?? []).map((p) => XFile('$p')).toList();
     _generatedPost = Map<String, dynamic>.from(data['post'] as Map);
-    notifyListeners();
+    super.notifyListeners();
+  }
+
+  /// 저장해 둔 글을 연다. 없으면 false.
+  bool resumeDraft(String id) {
+    final data = _store?.load(id);
+    if (data == null) return false;
+    _open(id, data);
     return true;
   }
 
-  void discardSavedDraft() {
-    _saveTimer?.cancel();
-    _store?.clear();
+  void discardDraft(String id) {
+    if (id == _draftId) {
+      _saveTimer?.cancel();
+      _draftId = null; // 열려 있던 글이면 지운 뒤 다시 저장하지 않는다
+    }
+    _store?.delete(id);
     super.notifyListeners(); // 지운 직후 다시 저장하지 않도록 저장 예약 없이 알린다
   }
 
   @override
   void dispose() {
     if (_saveTimer?.isActive ?? false) saveNow();
+    saveState.dispose();
     super.dispose();
   }
 
   void setImages(List<XFile> images) {
     _selectedImages = images;
     _generatedPost = null;
+    _draftId = null;
     notifyListeners();
   }
 
+  /// 발행 이력의 글을 연다. 그 글의 작업본(메모·검수 포함)이 있으면 작업본을 연다.
+  /// 열어 보기만 해서는 저장하지 않고, 고치기 시작하면 그 글 번호로 저장한다.
   void loadFromHistory(Map<String, dynamic> historyData) {
+    final id = historyData['id'] == null ? DraftStore.newId() : DraftStore.historyId(historyData['id']);
+    final saved = _store?.load(id);
+    if (saved != null) {
+      _open(id, saved);
+      return;
+    }
+    _draftId = id;
     _selectedImages = []; // 이력에서 불러올 때는 로컬 XFile은 비움
     _generatedPost = Map<String, dynamic>.from(historyData);
-    notifyListeners();
+    super.notifyListeners();
   }
 
   void clearImages() {
     _selectedImages = [];
     _generatedPost = null;
+    _draftId = null;
     notifyListeners();
   }
 
   void removeImage(int index) {
     if (index >= 0 && index < _selectedImages.length) {
       _selectedImages.removeAt(index);
-      notifyListeners();
-    }
-  }
-
-  // 템플릿 적용 로직 추가
-  void applyTemplate(String templateName) {
-    if (templateName == "맛집리뷰 템플릿") {
-      _generatedPost = _generatedPost ?? {};
-      _generatedPost!['template_name'] = templateName;
-      _generatedPost!['blocks'] = [
-        {"type": "quote", "value": "[인사말] 여러분의 맛집 메이트! 욱스의 욱이, 오늘도 기분 좋게 인사드려요!"},
-        {"type": "quote", "value": "[매장 위치 & 정보]\n- 가게명: \n- 주소: \n- 전화번호: \n- 영업시간: \n- 주차: "},
-        {"type": "quote", "value": "[외관] 매장 외부 모습과 분위기를 상세히 작성해주세요."},
-        {"type": "quote", "value": "[내부] 매장 안 인테리어와 테이블 배치를 설명해주세요."},
-        {"type": "quote", "value": "[메뉴판/음식] 주문한 메뉴의 비주얼과 맛을 생생하게 묘사해주세요."},
-        {"type": "divider", "value": ""},
-        {"type": "quote", "value": "[총평 & 마무리] 전체적인 만족도와 재방문 의사를 작성해주세요."},
-      ];
       notifyListeners();
     }
   }
@@ -157,6 +186,7 @@ class PostProvider with ChangeNotifier {
         templateName: templateName,
         initialFacts: initialFacts // 이 부분 추가
       );
+      _draftId = DraftStore.newId(); // 새 글은 새 번호로 저장한다 (앞의 작업 중인 글을 덮지 않게)
       _generatedPost = result;
       _generatedPost!['template_name'] = templateName;
 

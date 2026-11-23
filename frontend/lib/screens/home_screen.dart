@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../providers/post_provider.dart';
 import '../services/api_service.dart';
+import '../services/draft_store.dart';
 import '../widgets/saved_draft_card.dart';
 import 'post_editor_screen.dart';
 
@@ -16,6 +17,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   String _selectedTemplate = '맛집리뷰 템플릿';
+  // 작업 중인 글은 최근 몇 개만 보여 주고 나머지는 [더 보기]로 (홈이 길어지지 않게)
+  static const int _draftPreviewCount = 5;
+  bool _showAllDrafts = false;
   
   final _placeNameController = TextEditingController();
   final _addressController = TextEditingController();
@@ -435,33 +439,51 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 40),
             const Divider(),
             const SizedBox(height: 20),
-            // 앱을 끄기 전 작업하던 글 (자동 저장본)
-            Builder(builder: (context) {
-              final draft = provider.savedDraft;
-              if (draft == null) return const SizedBox.shrink();
+            // 작업 중인 글 (글마다 자동 저장본, 최근에 고친 것부터)
+            // 저장은 바뀐 뒤 0.5초에 일어나므로, 저장이 끝날 때(saveState)마다 목록을 다시 읽는다
+            ValueListenableBuilder<DraftSaveState?>(valueListenable: provider.saveState, builder: (context, _, __) {
+              final drafts = provider.savedDrafts;
+              if (drafts.isEmpty) return const SizedBox.shrink();
               return Padding(
                 padding: const EdgeInsets.only(bottom: 20),
-                child: SavedDraftCard(
-                  draft: draft,
-                  onResume: () {
-                    if (provider.resumeSavedDraft()) {
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PostEditorScreen()));
-                    }
-                  },
-                  onDiscard: () async {
-                    final ok = await showDialog<bool>(
-                      context: context,
-                      builder: (c) => AlertDialog(
-                        title: const Text('작업 중인 글 지우기'),
-                        content: const Text('저장해 둔 글과 메모를 지울까요? 되돌릴 수 없어요.'),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('취소')),
-                          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('지우기', style: TextStyle(color: Colors.red))),
-                        ],
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('✏️ 작업 중인 글 ${drafts.length}개', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 10),
+                    for (final draft in _showAllDrafts ? drafts : drafts.take(_draftPreviewCount))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: SavedDraftCard(
+                          draft: draft,
+                          onResume: () {
+                            if (provider.resumeDraft('${draft['id']}')) {
+                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PostEditorScreen()));
+                            }
+                          },
+                          onDiscard: () async {
+                            final ok = await showDialog<bool>(
+                              context: context,
+                              builder: (c) => AlertDialog(
+                                title: const Text('작업 중인 글 지우기'),
+                                content: const Text('저장해 둔 글과 메모를 지울까요? 되돌릴 수 없어요.\n(네이버에 임시저장한 글은 지워지지 않아요)'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('취소')),
+                                  TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('지우기', style: TextStyle(color: Colors.red))),
+                                ],
+                              ),
+                            );
+                            if (ok == true) provider.discardDraft('${draft['id']}');
+                          },
+                        ),
                       ),
-                    );
-                    if (ok == true) provider.discardSavedDraft();
-                  },
+                    if (drafts.length > _draftPreviewCount)
+                      TextButton.icon(
+                        onPressed: () => setState(() => _showAllDrafts = !_showAllDrafts),
+                        icon: Icon(_showAllDrafts ? Icons.expand_less : Icons.expand_more),
+                        label: Text(_showAllDrafts ? '접기' : '더 보기 (${drafts.length - _draftPreviewCount}개 더)'),
+                      ),
+                  ],
                 ),
               );
             }),
@@ -474,6 +496,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                 if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) return Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)), child: const Text("최근 작업 이력이 없습니다.", textAlign: TextAlign.center));
                 final history = snapshot.data!;
+                // 작업본이 있는 이력 글 (누르면 원래 글이 아니라 고치던 작업본이 열린다)
+                final draftIds = provider.savedDrafts.map((d) => d['id']).toSet();
                 return ListView.separated(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -486,7 +510,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey[300]!)),
                       leading: const Icon(Icons.article_outlined, color: Colors.indigo),
                       title: Text(item['title'] ?? '제목 없음', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      subtitle: Text("${item['platform']} · ${item['created_at'].toString().split('T')[0]}"),
+                      subtitle: Text([
+                        "${item['platform']} · ${item['created_at'].toString().split('T')[0]}",
+                        if (item['id'] != null && draftIds.contains(DraftStore.historyId(item['id']))) '✏️ 작업 중',
+                      ].join(' · ')),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () {
                         provider.loadFromHistory(item);

@@ -6,6 +6,7 @@ import '../providers/post_provider.dart';
 import '../services/api_service.dart';
 import '../widgets/publish_result_dialog.dart';
 import '../widgets/memo_widgets.dart';
+import '../widgets/saved_draft_card.dart' show DraftSaveLabel;
 import '../widgets/writing_report_card.dart';
 import 'review_screen.dart';
 
@@ -590,6 +591,7 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(title: const Text('AI 자동화 에디터'), actions: [
+        DraftSaveLabel(state: provider.saveState),
         Builder(builder: (_) {
           final pending = provider.memos.where((m) => m['checked'] == true && m['status'] == 'draft').length;
           return TextButton.icon(

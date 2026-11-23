@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../providers/post_provider.dart' show DraftSaveState;
 
-/// 홈 화면: 저장해 둔 작업 중인 글 → [이어서 작업하기] / [지우기]
+/// 홈 화면: 저장해 둔 작업 중인 글 하나 → [이어서 작업하기] / [지우기]
 class SavedDraftCard extends StatelessWidget {
-  final Map<String, dynamic> draft; // DraftStore.load() 결과
+  final Map<String, dynamic> draft; // DraftStore.list()의 한 항목
   final VoidCallback onResume;
   final VoidCallback onDiscard;
 
@@ -29,8 +31,6 @@ class SavedDraftCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('✏️ 작업 중인 글', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
             Text(title.isEmpty ? '제목 없음' : title, style: const TextStyle(fontSize: 16)),
             const SizedBox(height: 4),
             Text(
@@ -54,6 +54,37 @@ class SavedDraftCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 편집 화면 위: 작업 중인 글이 자동 저장됐는지 보여 준다 ("✓ 자동 저장됨 14:32" / "⚠ 저장 실패").
+/// 아직 저장한 적이 없으면 아무것도 보이지 않는다.
+class DraftSaveLabel extends StatelessWidget {
+  final ValueListenable<DraftSaveState?> state;
+  const DraftSaveLabel({super.key, required this.state});
+
+  static String timeLabel(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<DraftSaveState?>(
+      valueListenable: state,
+      builder: (context, s, _) {
+        if (s == null) return const SizedBox.shrink();
+        final text = s.ok ? '✓ 자동 저장됨 ${timeLabel(s.at)}' : '⚠ 저장 실패 ${timeLabel(s.at)}';
+        return Tooltip(
+          message: s.ok
+              ? '고칠 때마다 노트북에 자동으로 저장돼요. 앱을 꺼도 홈의 [이어서 작업하기]로 다시 열 수 있어요.'
+              : '노트북에 저장하지 못했어요: ${s.error}',
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Center(
+              child: Text(text, style: TextStyle(fontSize: 13, color: s.ok ? Colors.green[700] : Colors.red[700])),
+            ),
+          ),
+        );
+      },
     );
   }
 }
